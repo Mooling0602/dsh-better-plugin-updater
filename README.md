@@ -6,11 +6,11 @@ A TypeScript Cordis bundle for manually checking and updating third-party DeepSe
 
 - List the current profile's bundle inventory, including disabled bundles.
 - Check npm channels, GitHub repository refs, and exact GitHub release tarball attachments.
-- Review a frozen, expiring update plan before explicitly executing one update.
+- Confirm immediate batch updates or schedule exact targets for the next DSH startup.
 - Retain the bundle's enabled/disabled selection and report both management stages and the remaining package.
 - Offer read-only checks and plans to the agent through `plugin_updates` when the tools service is available.
 
-There are no startup checks, scheduled jobs, automatic updates, or automatic restarts. The bundle includes a Host coordinator and a small Web Client language bridge; buttons in the official plugin page are not implemented yet. Single-plugin and global custom indexes are reserved configuration interfaces; this version never fetches them.
+There are no automatic update checks or automatic restarts. Explicitly scheduled updates are attempted on the next DSH process startup. The bundle includes a Host coordinator and a small Web Client language bridge; buttons in the official plugin page are not implemented yet. Single-plugin and global custom indexes are reserved configuration interfaces; this version never fetches them.
 
 ## Build and use
 
@@ -40,13 +40,9 @@ After installing the built bundle through DSH's normal bundle installer, use:
 
 Inventory is grouped into profile plugins, DSH-provided bundles, and missing or uninstalled entries. Checks put available updates and failures first, show version or compact commit comparisons, and retain reasons for skipped packages. Update results distinguish completion, required restart, partial failure, pending script approvals, and manual recovery.
 
-A successful plan contains its exact target, expiry, warnings, and a copyable command:
+Immediate updates accept multiple exact package names and `*` / `?` package-name wildcards. `/plugin-updater update foo bar` checks and displays exact targets and risks; repeat the command, or use `/plugin-updater ok` or `/plugin-updater confirm`, to execute. Confirmation belongs to the calling agent, expires after ten minutes by default, and is renewed if the selection, installed state or target changes. `/plugin-updater update foo --accept-removal-risk` skips confirmation and immediately attempts the update. Unmatched patterns and per-package failures are reported.
 
-```text
-/plugin-updater update <plan-id> --accept-removal-risk
-```
-
-Read the plan before running that command. Plans are single-use, expire after ten minutes by default, and disappear when this plugin unloads. The agent tool cannot execute them.
+`/plugin-updater plan foo bar` schedules exact targets without executing immediately. `/plugin-updater plan` lists queued and completed results; `/plugin-updater plan cancel` removes all pending tasks without interrupting running work. A new pending target replaces an existing pending target for the same package. Tasks are persisted in the profile and attempted once when a new DSH process starts after their creating process has exited; reloading this plugin in the same process is not a restart. Startup uses the live plugin manager after plugin activation, so another restart may still be required. An interrupted task is retained as running for manual investigation and is never retried automatically. Queue lock files left by a crash require manual investigation and removal. Build-script approvals and compatibility checks are never bypassed. No package is downloaded in advance. The agent tool remains read-only; its plan action is a preview, not a scheduled task.
 
 ## Languages
 
@@ -72,7 +68,7 @@ The agent tool keeps English message text and stable JSON keys/status identifier
 | --- | --- |
 | npm | Ask the effective current registry, or an explicit per-package registry. Use `latest` unless a channel is configured. Compare stable SemVer versions and do not propose downgrades. |
 | GitHub source | Resolve the tracked ref to a full commit SHA. Compare it with a matching root-importer pnpm lockfile entry or an explicitly recorded SHA. An unknown baseline is not an actionable update. |
-| GitHub release | Ask the latest stable release and choose one exact uploaded `.tgz` or `.tar.gz` attachment. Infer its filename template from the current attachment, or configure one. |
+| GitHub release | Scan published releases and select the highest SemVer tag, including prereleases, regardless of GitHub's latest marker. Drafts and non-SemVer tags are ignored. Scan at most 1,000 releases; exceeding the limit reports an error rather than guessing. Choose one exact uploaded `.tgz` or `.tar.gz` attachment, inferred from the current attachment or explicitly configured. |
 | Local directory, unknown host or unsupported selector | Report unsupported without falling back to another source. |
 | Installation-provided, protected, broken, self, or official-target bundle | Skip. Official on-demand bundles retain DSH's built-in Update behavior. |
 

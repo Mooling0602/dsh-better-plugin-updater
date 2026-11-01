@@ -65,11 +65,24 @@ const githubRelease: UpdateProvider = {
   kind: 'github-release',
   async check(bundle, source, client, signal) {
     if (source.kind !== 'github-release') throw new UpdaterError('error.releaseSource');
-    const data = object(await client.get(`https://api.github.com/repos/${repository(source.repository)}/releases/latest`, signal));
-    if (data.draft !== false || data.prerelease !== false) throw new UpdaterError('error.releaseStable');
+    const base = `https://api.github.com/repos/${repository(source.repository)}/releases`;
+    // GitHub's latest marker excludes prereleases and is not a SemVer ordering.
+    let data: Record<string, unknown> | undefined;
+    let highest: string | undefined;
+    for (let page = 1; page <= 10; page++) {
+      const releases = await client.get(`${base}?per_page=100&page=${page}`, signal);
+      if (!Array.isArray(releases)) throw new UpdaterError('error.metadataObject');
+      for (const item of releases.map(object)) {
+        if (item.draft !== false || typeof item.prerelease !== 'boolean' || typeof item.tag_name !== 'string') continue;
+        const version = valid(item.tag_name.replace(/^v/, ''));
+        if (version && (!highest || gt(version, highest))) { highest = version; data = item; }
+      }
+      if (releases.length < 100) break;
+      if (page === 10) throw new UpdaterError('error.releasePageLimit');
+    }
+    if (!data || !highest) return { status: 'unsupported', ...message('msg.releaseTag') };
     const tag = text(data.tag_name);
-    const version = valid(tag.replace(/^v/, ''));
-    if (!version || prerelease(version)) return { status: 'unsupported', ...message('msg.releaseTag') };
+    const version = highest;
     const name = source.assetTemplate.replaceAll('{tag}', tag).replaceAll('{version}', version);
     if (/[{}\/\\\x00-\x1f]/.test(name) || !/\.(?:tgz|tar\.gz)$/i.test(name)) throw new UpdaterError('error.releaseTemplate');
     if (!Array.isArray(data.assets)) throw new UpdaterError('error.releaseAssets');

@@ -78,7 +78,10 @@ export function createJsonClient(options: JsonClientOptions = {}): JsonClient {
     async get(raw, signal) {
       let url: URL;
       try { url = new URL(raw); } catch { throw new UpdaterError('error.requestUrl'); }
-      if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new UpdaterError('error.requestUrl');
+      const releasePage = url.origin === 'https://api.github.com'
+        && /^\/repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/releases$/.test(url.pathname)
+        && /^\?per_page=100&page=(?:[1-9]|10)$/.test(url.search);
+      if (url.protocol !== 'https:' || url.username || url.password || (url.search && !releasePage) || url.hash) throw new UpdaterError('error.requestUrl');
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(new UpdaterError('error.timeout')), timeoutMs);
       const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;

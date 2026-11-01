@@ -1,5 +1,6 @@
 /** Update checking and explicit, single-use plans over DSH's non-transactional management API. */
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { valid } from 'semver';
 import { errorDetail, UpdaterError } from './errors.js';
 import { message, t } from './i18n.js';
@@ -24,9 +25,9 @@ function freeze<T>(value: T): T {
   }
   return value;
 }
-function fingerprint(bundle: InstalledBundle): string {
-  return JSON.stringify([bundle.name, bundle.version, bundle.source, bundle.enabled, bundle.installed,
-    bundle.removable, bundle.availability, bundle.readOnlyReason, bundle.error, bundle.installTarget]);
+function fingerprint(bundle: InstalledBundle): unknown[] {
+  return [bundle.name, bundle.version, bundle.source, bundle.enabled, bundle.installed,
+    bundle.removable, bundle.availability, bundle.readOnlyReason, bundle.error, bundle.installTarget];
 }
 function skipReason(bundle: InstalledBundle): Message | undefined {
   if (bundle.name === 'dsh-better-plugin-updater') return { key: 'msg.self' };
@@ -125,6 +126,11 @@ export class Updater {
   /** Freeze an exact target for ten minutes by default; no package is removed or installed. */
   async plan(name: string, signal?: AbortSignal): Promise<UpdatePlan> {
     const [result] = await this.check(name, signal);
+    return this.prepare(result);
+  }
+
+  /** Freeze a previously checked result without fetching a potentially different target. */
+  prepare(result: CheckResult | undefined): UpdatePlan {
     if (result?.status !== 'update-available' || !result.candidate) {
       if (result?.detail) throw new UpdaterError(result.detail.key, result.detail.params);
       if (result) throw new Error(result.message);
@@ -132,14 +138,14 @@ export class Updater {
     }
     const created = this.now();
     for (const [id, plan] of this.plans) if (Date.parse(plan.expiresAt) <= created) this.plans.delete(id);
-    if (this.plans.size >= 32) this.plans.delete(this.plans.keys().next().value!);
+    if (this.plans.size >= 1000) throw new Error('Too many pending update confirmations.');
     const id = randomUUID();
     const trackingWarning: Message = result.source.kind === 'github-source'
       ? { key: 'warning.gitPin', params: { name: result.bundle.name, ref: result.source.ref } }
       : result.source.kind === 'npm' ? { key: 'warning.npmPin', params: { name: result.bundle.name } } : { key: 'warning.release' };
     const warningDetails: Message[] = [{ key: 'warning.nonAtomic' }, { key: 'warning.recovery' }, { key: 'warning.permissions' }, trackingWarning];
     const plan = freeze(structuredClone({ id, createdAt: new Date(created).toISOString(),
-      expiresAt: new Date(created + this.ttl).toISOString(), command: `/plugin-updater update ${id} --accept-removal-risk`,
+      expiresAt: new Date(created + this.ttl).toISOString(), command: `/plugin-updater update ${result.bundle.name}`,
       bundle: result.bundle, source: result.source, candidate: result.candidate,
       warnings: warningDetails.map(detail => t('en', detail.key, detail.params)), warningDetails } satisfies UpdatePlan));
     this.abort.signal.throwIfAborted();
@@ -158,10 +164,18 @@ export class Updater {
     return this.track(this.applyInternal(plan).finally(() => { this.applying = false; }));
   }
 
+  /** Execute an already-authorized durable target, revalidating its installed baseline. */
+  applyDeferred(plan: UpdatePlan): Promise<ApplyResult> {
+    this.abort.signal.throwIfAborted();
+    if (this.applying) throw new UpdaterError('error.busy');
+    this.applying = true;
+    return this.track(this.applyInternal(plan).finally(() => { this.applying = false; }));
+  }
+
   private async applyInternal(plan: UpdatePlan): Promise<ApplyResult> {
     const current = (await this.list()).find(bundle => bundle.name === plan.bundle.name);
-    if (!current || skipReason(current) || fingerprint(current) !== fingerprint(plan.bundle)
-      || JSON.stringify(await this.source(current)) !== JSON.stringify(plan.source)) throw new UpdaterError('error.stale');
+    if (!current || skipReason(current) || !isDeepStrictEqual(fingerprint(current), fingerprint(plan.bundle))
+      || !isDeepStrictEqual(await this.source(current), plan.source)) throw new UpdaterError('error.stale');
     this.abort.signal.throwIfAborted();
     this.plans.delete(plan.id);
     let removal: ManagementResult | undefined;

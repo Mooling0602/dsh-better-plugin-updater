@@ -110,7 +110,7 @@ test('malformed or duplicate metadata cannot dispatch a write or replace removal
   ]) assert.equal((await h.command.handler({ rawInput })).kind, 'error');
   assert.deepEqual(h.writes, []);
   await h.command.handler({ rawInput: 'update id --accept-removal-risk --client-lang zh' });
-  assert.deepEqual(h.writes, [['id', true]]);
+  assert.deepEqual(h.writes, []);
 });
 
 test('unsupported or unavailable UI locale leaves the Host fallback intact', async () => {

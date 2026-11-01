@@ -30,7 +30,7 @@ test('checking and planning are read-only; plans freeze exact targets', async ()
   assert.throws(() => { plan.candidate.spec = 'malicious'; });
   assert.equal(plan.bundle.enabled, false);
   assert.equal(plan.candidate.spec, 'plugin@2.0.0');
-  assert.equal(plan.command, `/plugin-updater update ${plan.id} --accept-removal-risk`);
+  assert.equal(plan.command, '/plugin-updater update plugin');
   assert.match(plan.warnings.join(' '), /version-pinned/);
   await f.updater.dispose();
 });
@@ -168,6 +168,16 @@ test('Git updates verify the installed commit independently of the unchanged pac
   assert.equal(result.status, 'updated');
   assert.equal(result.remaining.version, '1.0.0');
   assert.equal((await f.updater.check('plugin'))[0].status, 'current');
+});
+
+test('durable targets revalidate after expiry and tolerate serialized key ordering', async () => {
+  let now = 1000;
+  const f = fixture({ now: () => now, planTtlMs: 100 });
+  const plan = await f.updater.plan('plugin');
+  now += 10000;
+  const restored = structuredClone(plan);
+  restored.source = Object.fromEntries(Object.entries(restored.source).reverse());
+  assert.equal((await f.updater.applyDeferred(restored)).status, 'updated');
 });
 
 test('a changed Git baseline invalidates a plan before removing a package', async () => {

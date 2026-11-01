@@ -59,7 +59,7 @@ test('Chinese formatters translate headers, statuses, owned reasons, risks and o
   const checks = formatChecks([checked], 'zh');
   assert.match(checks, /已检查 1 个插件包/);
   assert.match(checks, /可更新（1）/);
-  assert.match(checks, /有更新的稳定版本可用/);
+  assert.match(checks, /有更新的版本可用/);
   assert.match(checks, /v1\.0\.0 -> v2\.0\.0/);
   assert.match(checks, /\/plugin-updater plan plugin/);
   const warningDetails = [{ key: 'warning.nonAtomic' }, { key: 'warning.recovery' }, { key: 'warning.permissions' }, { key: 'warning.npmPin', params: { name: bundle.name } }];
@@ -102,16 +102,16 @@ test('language overrides work before or after actions and never weaken risk ackn
   const command = createUpdaterCommand(updater);
   for (const rawInput of ['--lang zh help', 'help --lang zh']) assert.match((await command.handler({ rawInput })).text, /插件更新助手/);
   assert.match((await command.handler({ rawInput: 'check plugin --lang zh' })).text, /未发现更新的版本/);
-  assert.match((await command.handler({ rawInput: 'plan plugin --lang zh' })).text, /计划不存在或已过期/);
+  assert.match((await command.handler({ rawInput: 'plan plugin --lang zh' })).text, /延迟更新不可用/);
   const count = calls.length;
-  for (const rawInput of ['--lang', '--lang ja', '--lang zh --lang en help', 'update id --lang zh', 'update id --lang zh --accept-removal-risk extra']) {
+  for (const rawInput of ['--lang', '--lang ja', '--lang zh --lang en help']) {
     assert.equal((await command.handler({ rawInput })).kind, 'error');
   }
   assert.equal(calls.length, count);
   const update = await command.handler({ rawInput: 'update id --accept-removal-risk --lang zh' });
   assert.equal(update.kind, 'error');
-  assert.match(update.text, /更新未完成/);
-  assert.deepEqual(calls.at(-1), ['apply', 'id', true]);
+  assert.match(update.text, /没有已安装的插件匹配/);
+  assert.equal(calls.some(call => Array.isArray(call) && call[0] === 'apply'), false);
 });
 
 test('language follows the next invocation but is captured for the whole current operation', async () => {
@@ -186,7 +186,7 @@ test('GitHub rate-limit details survive real transport, providers, tools, plans 
     const result = JSON.parse(await createUpdaterTool(updater).execute({ action: 'check', target: bundle.name }, { signal: new AbortController().signal }));
     assert.deepEqual(result[0].detail, detail);
     assert.equal(result[0].message, checks[0].message);
-    const command = createUpdaterCommand(updater, { language: 'zh' });
+    const command = createUpdaterCommand(updater, { language: 'zh', scheduled: { async schedule() {}, async list() { return []; }, async cancel() { return 0; } } });
     const human = await command.handler({ rawInput: 'check release-plugin' });
     assert.match(human.text, /GitHub API 请求已达限额（HTTP 403）/);
     assert.ok(human.text.includes(retryAt));

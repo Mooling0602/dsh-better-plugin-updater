@@ -5,74 +5,87 @@ import { createUpdaterTool } from '../dist/tools.js';
 
 function fixture() {
   const calls = [];
-  const bundles = [{ name: 'plugin', version: '1.0.0', source: 'plugin@^1', installed: true, enabled: true, removable: true, availability: 'profile' }];
-  const checked = [{ bundle: bundles[0], source: { kind: 'unsupported', reason: 'Fixture reason.' }, status: 'unsupported', message: 'Fixture reason.' }];
-  const plan = { id: 'id', createdAt: '2026-11-01T00:00:00Z', expiresAt: '2026-11-01T00:10:00Z', command: '/plugin-updater update id --accept-removal-risk',
-    bundle: bundles[0], source: { kind: 'npm' }, candidate: { spec: 'plugin@2.0.0', version: '2.0.0' }, warnings: ['Recovery is manual.'] };
+  let bundles = ['plugin-a', 'plugin-b', '@scope/plugin-c'].map(name => ({ name, version: '1.0.0', source: `${name}@^1`, installed: true, enabled: true, removable: true, availability: 'profile' }));
+  let version = '2.0.0';
+  const saved = [];
   const updater = {
-    async list() { calls.push(['list']); return bundles; },
-    async check(name, signal) { calls.push(['check', name, signal]); return checked; },
-    async plan(name, signal) { calls.push(['plan', name, signal]); return plan; },
-    async apply(id, accepted) { calls.push(['apply', id, accepted]); return { status: 'failed', message: 'Fixture failure.' }; },
+    async list() { calls.push(['list']); return structuredClone(bundles); },
+    async check(name, signal) { calls.push(['check', name, signal]); return bundles.filter(b => !name || b.name === name).map(bundle => ({ bundle, source: { kind: 'npm', packageName: bundle.name, registry: 'https://registry.test/', channel: 'latest', pinned: false }, status: 'update-available', message: 'Update available.', candidate: { spec: `${bundle.name}@${version}`, version } })); },
+    prepare(result) { return { id: result.bundle.name, bundle: result.bundle, source: result.source, candidate: result.candidate, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60000).toISOString(), command: `/plugin-updater update ${result.bundle.name}`, warnings: ['Recovery is manual.'] }; },
+    async plan(name, signal) { return this.prepare((await this.check(name, signal))[0]); },
+    async apply(id, accepted) { calls.push(['apply', id, accepted]); return { status: 'updated', message: 'Fixture success.' }; },
   };
-  return { calls, bundles, checked, plan, updater, command: createUpdaterCommand(updater), tool: createUpdaterTool(updater) };
+  const scheduled = { async schedule(plans) { saved.push(...plans); }, async list() { return saved.map(plan => ({ plan, state: 'pending' })); }, async cancel() { const n = saved.length; saved.length = 0; return n; } };
+  return { updater, calls, scheduled, saved, command: createUpdaterCommand(updater, { scheduled }), tool: createUpdaterTool(updater), setVersion(v) { version = v; }, setBundles(v) { bundles = v; }, get bundles() { return bundles; } };
 }
 
-test('command and tool consume identical data but use different presentation', async () => {
+test('list, help, check and read-only tool remain available', async () => {
   const f = fixture();
-  const signal = new AbortController().signal;
-  const human = await f.command.handler({ rawInput: ' check plugin', signal });
-  const machine = await f.tool.execute({ action: 'check', target: 'plugin' }, { signal });
-  assert.equal(human.kind, 'success');
-  assert.match(human.text, /Unsupported source/);
-  assert.match(human.text, /plugin/);
-  assert.throws(() => JSON.parse(human.text));
-  assert.deepEqual(JSON.parse(machine), f.checked);
-  assert.deepEqual(f.calls, [['check', 'plugin', signal], ['check', 'plugin', signal]]);
-  assert.deepEqual(f.tool.output.render({}, machine), [{ type: 'text', text: machine }]);
+  assert.match((await f.command.handler({ rawInput: 'help' })).text, /Plugin updater/);
+  assert.match((await f.command.handler({ rawInput: 'check plugin-a' })).text, /plugin-a/);
+  assert.equal(JSON.parse(await f.tool.execute({ action: 'check', target: 'plugin-a' }, { signal: new AbortController().signal }))[0].status, 'update-available');
+  await assert.rejects(f.tool.execute({ action: 'update', target: 'plugin-a' }, { signal: new AbortController().signal }));
 });
 
-test('bare command and explicit list read inventory; help does not touch the service', async () => {
-  const f = fixture();
-  assert.equal((await f.command.handler({ rawInput: '' })).text, (await f.command.handler({ rawInput: ' list ' })).text);
-  assert.equal((await f.command.handler({ rawInput: 'help' })).kind, 'success');
-  assert.deepEqual(f.calls, [['list'], ['list']]);
-  const machine = await f.tool.execute({ action: 'list' }, { signal: new AbortController().signal });
-  assert.deepEqual(JSON.parse(machine), f.bundles);
+test('wildcards and multiple arguments deduplicate; confirmation is agent-scoped and single-use', async () => {
+  const f = fixture(), a = {}, b = {};
+  const preview = await f.command.handler({ rawInput: 'update plugin-* plugin-a', agent: a });
+  assert.match(preview.text, /plugin-a@2\.0\.0/);
+  assert.match(preview.text, /plugin-b@2\.0\.0/);
+  assert.equal(f.calls.filter(c => c[0] === 'apply').length, 0);
+  assert.equal((await f.command.handler({ rawInput: 'confirm', agent: b })).kind, 'error');
+  assert.equal((await f.command.handler({ rawInput: 'ok', agent: a })).kind, 'success');
+  assert.deepEqual(f.calls.filter(c => c[0] === 'apply').map(c => c[1]), ['plugin-a', 'plugin-b']);
+  assert.equal((await f.command.handler({ rawInput: 'ok', agent: a })).kind, 'error');
 });
 
-test('plan output preserves all risks and does not execute; model plan stays JSON', async () => {
+test('changed target or changed match set requires renewed confirmation', async () => {
+  const f = fixture(), agent = {};
+  await f.command.handler({ rawInput: 'update plugin-*', agent });
+  f.setVersion('3.0.0');
+  assert.match((await f.command.handler({ rawInput: 'confirm', agent })).text, /plugin-a@3\.0\.0/);
+  assert.equal(f.calls.filter(c => c[0] === 'apply').length, 0);
+  f.setBundles(f.bundles.filter(b => b.name !== 'plugin-b'));
+  await f.command.handler({ rawInput: 'update plugin-*', agent });
+  assert.equal(f.calls.filter(c => c[0] === 'apply').length, 0);
+  await f.command.handler({ rawInput: 'update plugin-*', agent });
+  assert.deepEqual(f.calls.filter(c => c[0] === 'apply').map(c => c[1]), ['plugin-a']);
+});
+
+test('risk flag applies immediately; unmatched patterns are reported', async () => {
   const f = fixture();
-  const signal = new AbortController().signal;
-  const result = await f.command.handler({ rawInput: ' plan plugin', signal });
+  const result = await f.command.handler({ rawInput: 'update @scope/plugin-? missing* --accept-removal-risk' });
   assert.equal(result.kind, 'success');
-  assert.ok(result.text.includes(f.plan.command));
-  assert.match(result.text, /Recovery is manual/);
-  assert.deepEqual(f.calls, [['plan', 'plugin', signal]]);
-  assert.deepEqual(JSON.parse(await f.tool.execute({ action: 'plan', target: 'plugin' }, { signal })), f.plan);
+  assert.match(result.text, /missing\*/);
+  assert.deepEqual(f.calls.filter(c => c[0] === 'apply').map(c => c[1]), ['@scope/plugin-c']);
 });
 
-test('malformed forms never dispatch writes and all thrown failures are readable', async () => {
+test('plan schedules exact targets, can list and cancel, and never executes immediately', async () => {
   const f = fixture();
-  for (const rawInput of ['update id', 'update id --accept-removal-risk extra', 'plan', 'check plugin extra', 'list extra', 'help extra', 'unknown']) {
-    const result = await f.command.handler({ rawInput });
-    assert.equal(result.kind, 'error');
-    assert.match(result.text, /Plugin updater/);
-  }
-  assert.deepEqual(f.calls, []);
-  f.updater.plan = async () => { throw new Error('Plan is expired.'); };
-  const failure = await f.command.handler({ rawInput: 'plan plugin' });
-  assert.equal(failure.kind, 'error');
-  assert.match(failure.text, /Operation could not be completed/);
-  assert.match(failure.text, /Plan is expired/);
+  assert.equal((await f.command.handler({ rawInput: 'plan plugin-*' })).kind, 'success');
+  assert.equal(f.saved.length, 2);
+  assert.match((await f.command.handler({ rawInput: 'plan' })).text, /plugin-a@2\.0\.0/);
+  assert.match((await f.command.handler({ rawInput: 'plan cancel' })).text, /Cancelled 2/);
+  assert.equal(f.saved.length, 0);
+  assert.equal(f.calls.filter(c => c[0] === 'apply').length, 0);
 });
 
-test('explicit update preserves failed status; read-only tool cannot apply', async () => {
+test('a second confirmation cannot race an in-flight update', async () => {
+  const f = fixture(), agent = {};
+  let release, entered;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { entered = resolve; });
+  f.updater.apply = async () => { entered(); await gate; return { status: 'updated', message: 'done' }; };
+  await f.command.handler({ rawInput: 'update plugin-a', agent });
+  const running = f.command.handler({ rawInput: 'ok', agent });
+  await started;
+  assert.equal((await f.command.handler({ rawInput: 'confirm', agent })).kind, 'error');
+  release();
+  assert.equal((await running).kind, 'success');
+});
+
+test('invalid forms do not apply updates', async () => {
   const f = fixture();
-  const result = await f.command.handler({ rawInput: 'update id --accept-removal-risk' });
-  assert.equal(result.kind, 'error');
-  assert.match(result.text, /Update did not complete/);
-  assert.deepEqual(f.calls, [['apply', 'id', true]]);
-  await assert.rejects(f.tool.execute({ action: 'update', target: 'id' }, { signal: new AbortController().signal }));
-  assert.deepEqual(f.calls, [['apply', 'id', true]]);
+  for (const rawInput of ['update', 'update --other', 'update plugin-a --accept-removal-risk --accept-removal-risk', 'confirm extra', 'check x extra', 'list extra', 'unknown']) assert.equal((await f.command.handler({ rawInput })).kind, 'error');
+  assert.equal(f.calls.filter(c => c[0] === 'apply').length, 0);
 });

@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Context } from '@deepseek-ai/cordis';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ScheduledUpdates } from '../dist/scheduled.js';
 import * as plugin from '../dist/index.js';
 
 function host() {
@@ -123,6 +127,31 @@ test('Host lazily resolves current credentials, supports optional services, and 
     if (previous === undefined) delete process.env[reference];
     else process.env[reference] = previous;
   }
+});
+
+test('Host startup applies persisted tasks through its plugin manager', { timeout: 5000 }, async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-updater-host-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const h = host();
+  h.ctx.get('profileContext').dir = dir;
+  let bundle = { name: 'plugin', version: '1.0.0', source: 'plugin@^1', enabled: true, installed: true, removable: true, availability: 'profile' };
+  const manager = h.ctx.get('pluginManager');
+  manager.listBundles = async () => bundle ? [bundle] : [];
+  let resolveInstall;
+  const installed = new Promise(resolve => { resolveInstall = resolve; });
+  manager.removeBundle = async () => { bundle = undefined; return { application: 'applied' }; };
+  manager.installBundle = async (spec) => { bundle = { name: 'plugin', version: '2.0.0', source: spec, enabled: true, installed: true, removable: true, availability: 'profile' }; resolveInstall(); return { application: 'applied' }; };
+  const queue = new ScheduledUpdates(dir, { async applyDeferred() { throw new Error('unexpected'); } });
+  await queue.schedule([{ id: crypto.randomUUID(), createdAt: new Date().toISOString(), expiresAt: new Date().toISOString(), command: '/plugin-updater update plugin', bundle,
+    source: { kind: 'npm', packageName: 'plugin', registry: 'https://registry.test/', channel: 'latest', pinned: false },
+    candidate: { spec: 'plugin@2.0.0', version: '2.0.0', registry: 'https://registry.test/' }, warnings: [] }]);
+  const file = join(dir, '.better-plugin-updater-queue.json');
+  const saved = JSON.parse(await readFile(file, 'utf8'));
+  saved.entries[0].creator = 'previous-process'; saved.entries[0].pid = 2147483647;
+  await writeFile(file, JSON.stringify(saved));
+  const fiber = h.ctx.plugin(plugin, {});
+  try { await fiber.await(); await installed; assert.equal(bundle.version, '2.0.0'); }
+  finally { await fiber.dispose(); }
 });
 
 test('configuration has no scheduled work and rejects invalid request bounds', () => {

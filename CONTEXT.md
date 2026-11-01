@@ -27,6 +27,7 @@ src/lockfile.ts         Bounded read-only pnpm Git baseline extraction
 src/http.ts             Deadline, body bound, HTTPS and token-host isolation
 src/providers/index.ts  npm, GitHub ref and GitHub release readers
 src/updater.ts          Inventory, checks, frozen plans and update execution
+src/scheduled.ts        Persisted startup queue, locking and at-most-once execution
 src/core.ts             Host-independent exports for tests and extensions
 ```
 
@@ -76,15 +77,15 @@ npm metadata is read directly from the selected registry's packument. The packag
 
 GitHub source checks resolve one ref through the commits API. They compare full commit identities, independently of the manifest version. The installed baseline comes only from an exact source SHA or a matching dependency in the root lockfile importer. The reader bounds input to 4 MiB, disables YAML aliases, rejects a mismatched repository/ref, and does not scan arbitrary transitive entries for a convenient SHA. An unsupported lockfile representation produces `unknown`, not a speculative update.
 
-GitHub release checks use the stable latest-release endpoint, require a stable SemVer tag with optional `v`, and choose one exact uploaded tarball. A release's source archive is not substituted for a prepared attachment. Asset URLs must match the requested GitHub repository, release tag and filename. No checksum verification is implemented beyond whatever pnpm records and verifies during its own operation.
+GitHub release checks scan published releases and choose the highest valid SemVer tag including prereleases, independently of GitHub's latest marker, then choose one exact uploaded tarball. They scan at most 1,000 releases and fail closed beyond that limit. A release's source archive is not substituted for a prepared attachment. Asset URLs must match the requested GitHub repository, release tag and filename. No checksum verification is implemented beyond whatever pnpm records and verifies during its own operation.
 
-The JSON transport refuses redirects, credentials, query strings and fragments; sends an optional token only to `https://api.github.com`; bounds streamed bytes; and gives headers/body reading a common deadline. Direct provider users are trusted Host code; external input should enter through source inference and validated configuration.
+The JSON transport refuses redirects, credentials, fragments and query strings except its strictly validated GitHub release-pagination query; sends an optional token only to `https://api.github.com`; bounds streamed bytes; and gives headers/body reading a common deadline. Direct provider users are trusted Host code; external input should enter through source inference and validated configuration.
 
 Owned `UpdaterError` diagnostics are rethrown intact instead of being swallowed by the transport catch. Non-success responses retain HTTP status. GitHub-origin `403` needs `X-RateLimit-Remaining: 0` or a valid `Retry-After` hint to identify a rate limit; any-origin `429` is rate limiting. Retry-After delay seconds or an HTTP date take precedence over GitHub's quota-reset epoch, which is used only when the primary quota is exhausted. Invalid or past times are omitted; accepted hints become ISO UTC `detail.params.retryAt`. Classification reads headers only and cancels the error body without waiting, so arbitrary remote diagnostics, IP addresses, credentials, and stalled cancellation cannot replace or delay the status error. These are advisory retry times, not automatic retries or success guarantees. Timeout, caller cancellation, body limits, missing bodies and invalid UTF-8/JSON retain separate typed identities; arbitrary transport errors are sanitized. Integration tests carry rate-limit details through both GitHub providers, coordinator, JSON tool, plan refusal, and Chinese command presentation.
 
 ## Planning and execution
 
-A plan is a deeply frozen copy of the checked bundle, source and exact candidate. It includes a random id, timestamps, risk warnings and a copyable user command. At most 32 plans are retained, without a pruning timer. Expired plans are pruned on plan creation and refused on execution. Plan state is deliberately process-local and is discarded on unload.
+Immediate confirmation uses deeply frozen exact targets held in memory, scoped to the invoking Agent and subject to expiry. Repeated update, ok or confirm rechecks the selected set and candidate; a change requires renewed confirmation. The risk flag skips this confirmation. Slash-command plan persists exact targets for a later process startup, while the model tool's plan is only a read-only preview. The profile-local queue marks each task running before applying, retains results, and does not automatically replay interrupted work. It uses exclusive lock files and atomic replacement; stale locks require manual investigation. The startup worker runs once per process/profile and skips tasks whose creating process is still alive. It runs after plugin activation through the live manager, not in a guaranteed pre-load hook; another restart can be required.
 
 Before any write, execution compares the current bundle fingerprint and inferred source with the planned snapshot. This includes the saved version/source, enabled state, protection, effective registry and known baseline. It then consumes the plan and serializes this plugin's own removal/install pair. Another client can still change the profile between the public management calls; the adapter does not pretend to hold a transaction lock across them.
 
@@ -99,7 +100,7 @@ Exact target installation intentionally records a new version/commit pin. Contin
 - Register controls and tags through the official `plugins.detail.actions` and `plugins.detail.badge` slots. A future mutation UI must call the same coordinator and keep risk acceptance user-only. The Client entry currently only bridges command language; a stable updater Remote boundary and matching read-only tool contract still need verification before adding page controls.
 - Single-plugin index configuration is reserved as `sources.<name> = { kind: 'index', url }`; it currently reports unsupported. Global `indexes` are accepted but never fetched. Global indexes must not take over npm packages. Define source identity, precedence, conflict handling, trust and integrity before making either path active.
 - DSH's existing market index format supports npm and commit-pinned Git, not release attachments. Evaluate a compatible adapter before introducing a new format.
-- Private npm authentication, additional Git hosts, monorepo paths, prereleases, update batching, scheduled checks, rollback and self-update are not implemented.
+- Private npm authentication, additional Git hosts, monorepo paths, npm prereleases, periodic checks, rollback and self-update are not implemented.
 
 ## Development
 

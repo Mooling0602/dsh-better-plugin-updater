@@ -31,7 +31,7 @@ test('check output prioritizes available updates and groups every result without
   assert.match(text, /Checked 7 plugin bundle\(s\)/);
   assert.ok(text.indexOf('Update available (1):') < text.indexOf('Check failed (1):'));
   assert.match(text, /example-plugin: v1\.0\.0 -> v2\.0\.0/);
-  assert.match(text, /Review a plan: \/plugin-updater plan example-plugin/);
+  assert.match(text, /schedule: \/plugin-updater plan example-plugin/);
   for (const status of statuses) assert.ok(text.includes(`${status}-plugin`));
   assert.match(text, /Checking does not install or remove anything/);
   notJson(text);

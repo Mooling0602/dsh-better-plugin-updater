@@ -141,8 +141,9 @@ export function formatUsage(language: Language = 'en'): string {
     `/plugin-updater                  ${t(language, 'ui.help.list')}`,
     `/plugin-updater list             ${t(language, 'ui.help.list')}`,
     `/plugin-updater check [package]  ${t(language, 'ui.help.check')}`,
-    `/plugin-updater plan <package>   ${t(language, 'ui.help.plan')}`,
-    '/plugin-updater update <plan-id> --accept-removal-risk', `                                ${t(language, 'ui.help.update')}`,
+    `/plugin-updater plan [package ...|cancel]   ${t(language, 'ui.help.plan')}`,
+    `/plugin-updater update <package ...> [--accept-removal-risk]   ${t(language, 'ui.help.update')}`,
+    '/plugin-updater ok | confirm',
     `/plugin-updater help             ${t(language, 'ui.help.help')}`, '', t(language, 'ui.help.language'), '', t(language, 'ui.help.risk')].join('\n');
 }
 

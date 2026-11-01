@@ -13,6 +13,7 @@ import type { LocaleSettings } from './i18n.js';
 import { readLockedRevision } from './lockfile.js';
 import { createProviders } from './providers/index.js';
 import { Updater } from './updater.js';
+import { ScheduledUpdates } from './scheduled.js';
 import type { PluginManager } from './types.js';
 
 export { Config } from './config.js';
@@ -45,9 +46,16 @@ export function apply(ctx: Context, rawConfig: unknown = {}): void {
       resolveGithubToken: () => resolveGithubToken(config.githubTokenEnv, ctx.get('credentials') as CredentialReferences | undefined) }),
     providers: createProviders(), overrides: config.sources, planTtlMs: config.planTtlMs,
     currentRevision: bundle => readLockedRevision(profile.dir!, bundle) });
+  const scheduled = new ScheduledUpdates(profile.dir, updater);
   ctx.provide('betterPluginUpdater', updater);
   ctx.effect(() => () => updater.dispose());
+  ctx.effect(() => {
+    let startup: Promise<void> | undefined;
+    const timer = setImmediate(() => { startup = scheduled.startup().catch(error => console.error('[better-plugin-updater] Scheduled update queue:', error instanceof Error ? error.message : 'failed')); });
+    return async () => { clearImmediate(timer); await startup; };
+  });
   ctx.effect(() => commands.register(createUpdaterCommand(updater, {
+    scheduled,
     language: clientLanguage => resolveLanguage(config.language, ctx.get('settings') as LocaleSettings | undefined, clientLanguage),
   })));
   ctx.inject(['tools'], toolsContext => {

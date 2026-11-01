@@ -53,20 +53,35 @@ const releaseSource = { kind: 'github-release', repository: 'owner/repo', assetT
 function release() { return { tag_name: 'v2.0.0', draft: false, prerelease: false, assets: [{ name: 'plugin-v2.0.0.tgz', state: 'uploaded', browser_download_url: 'https://github.com/owner/repo/releases/download/v2.0.0/plugin-v2.0.0.tgz' }] }; }
 
 test('GitHub release selects one exact uploaded tarball and does not downgrade', async () => {
-  const result = await providers['github-release'].check(bundle, releaseSource, client(release()));
+  const result = await providers['github-release'].check(bundle, releaseSource, client([release()]));
   assert.equal(result.status, 'update-available');
   assert.equal(result.candidate.version, '2.0.0');
-  assert.equal((await providers['github-release'].check({ ...bundle, version: '3.0.0' }, releaseSource, client(release()))).status, 'current');
-  assert.equal((await providers['github-release'].check(bundle, { ...releaseSource, assetTemplate: 'missing.tgz' }, client(release()))).status, 'unsupported');
+  assert.equal((await providers['github-release'].check({ ...bundle, version: '3.0.0' }, releaseSource, client([release()]))).status, 'current');
+  assert.equal((await providers['github-release'].check(bundle, { ...releaseSource, assetTemplate: 'missing.tgz' }, client([release()]))).status, 'unsupported');
   const duplicate = release(); duplicate.assets.push(duplicate.assets[0]);
-  assert.equal((await providers['github-release'].check(bundle, releaseSource, client(duplicate))).status, 'unsupported');
+  assert.equal((await providers['github-release'].check(bundle, releaseSource, client([duplicate]))).status, 'unsupported');
 });
 
 test('release data cannot redirect installation to another host, repo or tag', async () => {
   for (const url of ['https://attacker.test/plugin.tgz', 'https://github.com/attacker/repo/releases/download/v2.0.0/plugin-v2.0.0.tgz', 'https://github.com/owner/repo/releases/download/v9.0.0/plugin-v2.0.0.tgz']) {
     const data = release(); data.assets[0].browser_download_url = url;
-    await assert.rejects(providers['github-release'].check(bundle, releaseSource, client(data)), /origin/);
+    await assert.rejects(providers['github-release'].check(bundle, releaseSource, client([data])), /origin/);
   }
   const draft = release(); draft.draft = true;
-  await assert.rejects(providers['github-release'].check(bundle, releaseSource, client(draft)), /stable/);
+  assert.equal((await providers['github-release'].check(bundle, releaseSource, client([draft]))).status, 'unsupported');
+});
+
+test('release scans pages and selects highest SemVer including prereleases, ignoring drafts and latest marker', async () => {
+  const make = (tag, draft = false) => ({ tag_name: tag, draft, prerelease: tag.includes('-'), assets: [{ name: `plugin-${tag}.tgz`, state: 'uploaded', browser_download_url: `https://github.com/owner/repo/releases/download/${tag}/plugin-${tag}.tgz` }] });
+  const asked = [];
+  const result = await providers['github-release'].check({ ...bundle, version: '1.0.0-rc.1' }, releaseSource, {
+    async get(url) { asked.push(url); return asked.length === 1 ? [make('v0.4.3'), make('v9.0.0', true), ...Array(98).fill(make('v0.1.0'))] : [make('v1.0.0-rc.2'), make('not-semver')]; },
+  });
+  assert.equal(result.status, 'update-available');
+  assert.equal(result.candidate.version, '1.0.0-rc.2');
+  assert.equal(asked.length, 2);
+  assert.match(asked[1], /page=2$/);
+  const stable = await providers['github-release'].check(bundle, releaseSource, client([make('v2.0.0-rc.1'), make('v1.9.0')]));
+  assert.equal(stable.candidate.version, '2.0.0-rc.1');
+  await assert.rejects(providers['github-release'].check(bundle, releaseSource, client(Array(100).fill(make('v1.0.0')))), /1,000/);
 });
