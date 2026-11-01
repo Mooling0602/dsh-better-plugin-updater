@@ -1,0 +1,4 @@
+- insert:
+    - id: better-plugin-updater
+      name: dsh-better-plugin-updater
+      config: {}

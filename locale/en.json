@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Better Plugin Updater",
+    "description": "Manually check npm and GitHub plugin bundles and review an exact update plan before updating."
+  }
+}
