@@ -1,0 +1,156 @@
+/** Bounded HTTPS JSON transport for read-only provider metadata. */
+import { UpdaterError } from './errors.js';
+/** Bound asynchronous credential resolution by the same cancellation/deadline as the HTTP request. */
+async function requestToken(options, signal) {
+    let value = options.githubToken;
+    if (options.resolveGithubToken) {
+        let onAbort = () => { };
+        try {
+            value = await Promise.race([
+                Promise.resolve().then(() => { signal.throwIfAborted(); return options.resolveGithubToken(); }),
+                new Promise((_, reject) => {
+                    onAbort = () => reject(signal.reason);
+                    signal.addEventListener('abort', onAbort, { once: true });
+                    if (signal.aborted)
+                        onAbort();
+                }),
+            ]);
+        }
+        catch {
+            throw new UpdaterError('error.githubCredentials');
+        }
+        finally {
+            signal.removeEventListener('abort', onAbort);
+        }
+    }
+    if (value === undefined || value === '')
+        return undefined;
+    // GitHub bearer tokens are non-whitespace ASCII; reject malformed values without echoing them.
+    if (typeof value !== 'string' || !/^[\x21-\x7e]+$/.test(value))
+        throw new UpdaterError('error.githubCredentials');
+    return value;
+}
+/** Normalize only valid retry hints; never reflect raw server headers in diagnostics. */
+function retryTime(raw, now, relative) {
+    if (raw === null)
+        return undefined;
+    const value = raw.trim();
+    const seconds = /^\d+$/.test(value);
+    if (!seconds && (!relative || !/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(value)))
+        return undefined;
+    const time = seconds ? Number(value) * 1000 + (relative ? now : 0) : Date.parse(value);
+    if (!Number.isSafeInteger(time) || time < now || time > 8.64e15)
+        return undefined;
+    const date = new Date(time);
+    // Date.parse normalizes impossible calendar dates; reject rather than inventing a retry hint.
+    if (!seconds && date.toUTCString() !== value)
+        return undefined;
+    return date.toISOString();
+}
+/** Classify HTTP failures from status and safe headers, without reading an untrusted error body. */
+function httpError(response, github) {
+    const status = response.status;
+    const now = Date.now();
+    const retryAfter = retryTime(response.headers.get('retry-after'), now, true);
+    const exhausted = response.headers.get('x-ratelimit-remaining')?.trim() === '0';
+    if (status === 429 || (github && status === 403 && (exhausted || retryAfter !== undefined))) {
+        const retryAt = retryAfter ?? (github && exhausted ? retryTime(response.headers.get('x-ratelimit-reset'), now, false) : undefined);
+        if (github)
+            return retryAt === undefined ? new UpdaterError('error.githubRateLimited', { status })
+                : new UpdaterError('error.githubRateLimitedUntil', { status, retryAt });
+        return retryAt === undefined ? new UpdaterError('error.rateLimited', { status })
+            : new UpdaterError('error.rateLimitedUntil', { status, retryAt });
+    }
+    return new UpdaterError('error.httpStatus', { status });
+}
+/** Create a JSON client with a deadline covering both headers and streamed body consumption. */
+export function createJsonClient(options = {}) {
+    const transport = options.fetch ?? globalThis.fetch;
+    const timeoutMs = options.timeoutMs ?? 15_000;
+    const maxBytes = options.maxBytes ?? 4 * 1024 * 1024;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+        throw new UpdaterError('error.requestLimits');
+    }
+    return {
+        async get(raw, signal) {
+            let url;
+            try {
+                url = new URL(raw);
+            }
+            catch {
+                throw new UpdaterError('error.requestUrl');
+            }
+            const releasePage = url.origin === 'https://api.github.com'
+                && /^\/repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/releases$/.test(url.pathname)
+                && /^\?per_page=100&page=(?:[1-9]|10)$/.test(url.search);
+            if (url.protocol !== 'https:' || url.username || url.password || (url.search && !releasePage) || url.hash)
+                throw new UpdaterError('error.requestUrl');
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(new UpdaterError('error.timeout')), timeoutMs);
+            const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+            let reader;
+            const cancelBody = () => { void reader?.cancel().catch(() => undefined); };
+            combined.addEventListener('abort', cancelBody, { once: true });
+            try {
+                combined.throwIfAborted();
+                const headers = { Accept: 'application/json', 'User-Agent': 'dsh-better-plugin-updater/0.1.0' };
+                if (url.origin === 'https://api.github.com') {
+                    headers.Accept = 'application/vnd.github+json';
+                    const token = await requestToken(options, combined);
+                    if (token)
+                        headers.Authorization = `Bearer ${token}`;
+                }
+                combined.throwIfAborted();
+                const response = await transport(url, { headers, redirect: 'error', signal: combined });
+                if (!response.ok) {
+                    // Error bodies can contain credentials, IP addresses or arbitrary remote instructions.
+                    // Cancelling must not mask the HTTP diagnostic or wait for a stalled error body.
+                    void response.body?.cancel().catch(() => undefined);
+                    throw httpError(response, url.origin === 'https://api.github.com');
+                }
+                if (!response.body)
+                    throw new UpdaterError('error.noBody');
+                reader = response.body.getReader();
+                combined.throwIfAborted();
+                const chunks = [];
+                let total = 0;
+                for (;;) {
+                    const { done, value } = await reader.read();
+                    combined.throwIfAborted();
+                    if (done)
+                        break;
+                    total += value.byteLength;
+                    if (total > maxBytes)
+                        throw new UpdaterError('error.bodyLimit');
+                    chunks.push(value);
+                }
+                const body = Buffer.concat(chunks, total);
+                try {
+                    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body));
+                }
+                catch {
+                    throw new UpdaterError('error.invalidJson');
+                }
+            }
+            catch (error) {
+                if (combined.aborted) {
+                    if (controller.signal.aborted && combined.reason === controller.signal.reason)
+                        throw new UpdaterError('error.timeout');
+                    throw new UpdaterError('error.requestCancelled');
+                }
+                if (error instanceof UpdaterError)
+                    throw error;
+                throw new UpdaterError('error.requestFailed');
+            }
+            finally {
+                clearTimeout(timer);
+                combined.removeEventListener('abort', cancelBody);
+                if (reader) {
+                    await reader.cancel().catch(() => undefined);
+                    reader.releaseLock();
+                }
+            }
+        },
+    };
+}
+//# sourceMappingURL=http.js.map

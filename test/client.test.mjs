@@ -173,4 +173,8 @@ test('packaged browser factory is self-contained and declares a discoverable Cli
   assert.equal(pkg.exports['./client'].browser, './dist/client.js');
   assert.equal(pkg.dsh.client.immediately, true);
   assert.equal(pkg.dsh.client.platform, 'web');
+  // A Git dependency must consume committed artifacts, not build on the user's device.
+  for (const hook of ['prepare', 'prepack', 'preinstall', 'install', 'postinstall']) {
+    assert.equal(pkg.scripts[hook], undefined, `${hook} must not trigger an install-time build`);
+  }
 });

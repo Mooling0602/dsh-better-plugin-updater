@@ -23,7 +23,7 @@ pnpm test
 pnpm pack
 ```
 
-The generated package includes compiled JavaScript, declarations, the bundle patch, English/Chinese display metadata, and an original SVG icon. Git-source installations use the `prepare` build step and may require DSH's normal build-script approval. No live profile is installed or changed by the development tests.
+The repository includes the compiled JavaScript and declarations in `dist/`, so Git-source installations do not need to build this package or install its development dependencies. The package also includes the bundle patch, English/Chinese display metadata, and an original SVG icon. After changing source, run `pnpm build` and commit the updated `dist/` files before publishing or packing. Other dependencies or profile policies may still require script approval. No live profile is installed or changed by the development tests.
 
 Slash commands display human-readable summaries, grouped check results, and clearly separated risks and confirmation instructions. The `plugin_updates` model tool retains its structured JSON output over the same coordinator. A bare command lists bundles; `help` shows usage without starting a check.
 

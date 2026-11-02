@@ -58,9 +58,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/*.test.mjs",
-    "prepack": "npm run build",
-    "prepare": "npm run build"
+    "test": "npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
     "semver": "^7.7.3",

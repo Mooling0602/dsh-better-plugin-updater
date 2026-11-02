@@ -1,0 +1,161 @@
+/** Human-readable, localized command presentation. Model tools retain their English JSON fields. */
+import { errorDetail } from './errors.js';
+import { t, translate } from './i18n.js';
+import { githubRepository, releaseAttachment } from './sources.js';
+const STATUS = {
+    'update-available': 'ui.status.update', current: 'ui.status.current', pinned: 'ui.status.pinned',
+    unknown: 'ui.status.unknown', unsupported: 'ui.status.unsupported', skipped: 'ui.status.skipped', error: 'ui.status.error',
+};
+const ORDER = ['update-available', 'error', 'unknown', 'pinned', 'current', 'unsupported', 'skipped'];
+function inline(value) { return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').trim(); }
+function shortRevision(value) { return inline(value).slice(0, 12); }
+function sourceLabel(source, language) {
+    const key = !source ? 'ui.source.unknown' : releaseAttachment(source) ? 'ui.source.release'
+        : githubRepository(source) ? 'ui.source.git' : /^(?:link:|file:|\/)/.test(source) ? 'ui.source.local'
+            : source.includes('@') && !source.includes(':') ? 'ui.source.npm' : 'ui.source.other';
+    return t(language, key);
+}
+function providerLabel(source, language) {
+    return t(language, source.kind === 'npm' ? 'ui.source.npm' : source.kind === 'github-source' ? 'ui.source.git'
+        : source.kind === 'github-release' ? 'ui.source.release' : 'ui.source.unsupported');
+}
+function bundleLine(bundle, language) {
+    return `- ${inline(bundle.name)}${bundle.version ? ` v${inline(bundle.version)}` : ''}`
+        + ` (${t(language, bundle.enabled ? 'ui.enabled' : 'ui.disabled')}, ${sourceLabel(bundle.source, language)})`;
+}
+function targetLines(candidate, language) {
+    return [t(language, 'ui.installTarget', { spec: inline(candidate.spec) }),
+        ...(candidate.registry ? [t(language, 'ui.registry', { registry: inline(candidate.registry) })] : [])];
+}
+/** Render installed packages separately from DSH-owned bundles and absent catalog offers. */
+export function formatInventory(bundles, language = 'en') {
+    if (bundles.length === 0)
+        return t(language, 'ui.inventory.empty');
+    const profile = bundles.filter(bundle => bundle.installed && bundle.availability === 'profile');
+    const provided = bundles.filter(bundle => bundle.availability === 'installation');
+    const other = bundles.filter(bundle => bundle.availability !== 'installation' && !(bundle.installed && bundle.availability === 'profile'));
+    const lines = [t(language, 'ui.inventory.summary', { profile: profile.length, provided: provided.length, other: other.length })];
+    const group = (key, entries) => {
+        if (entries.length === 0)
+            return;
+        lines.push('', t(language, 'ui.group', { title: t(language, key), count: entries.length }));
+        for (const bundle of entries) {
+            lines.push(bundleLine(bundle, language));
+            if (bundle.error)
+                lines.push(`  ${t(language, 'ui.problem', { code: inline(bundle.error.code) })}`);
+        }
+    };
+    group('ui.inventory.profile', profile);
+    group('ui.inventory.provided', provided);
+    group('ui.inventory.other', other);
+    lines.push('', t(language, 'ui.checkHint'));
+    return lines.join('\n');
+}
+function checkLines(result, language) {
+    const { bundle, source, candidate } = result;
+    let version = bundle.version ? `v${inline(bundle.version)}` : t(language, 'ui.versionUnknown');
+    if (candidate?.version && candidate.version !== bundle.version) {
+        version += result.status === 'update-available' ? ` -> v${inline(candidate.version)}` : t(language, 'ui.offeredVersion', { version: inline(candidate.version) });
+    }
+    if (source.kind === 'github-source' && candidate?.revision) {
+        version += source.currentRevision === candidate.revision ? t(language, 'ui.commit', { revision: shortRevision(candidate.revision) })
+            : result.status === 'update-available' ? t(language, 'ui.commitChange', {
+                current: source.currentRevision ? shortRevision(source.currentRevision) : t(language, 'ui.unknown'), target: shortRevision(candidate.revision),
+            }) : t(language, 'ui.offeredCommit', { revision: shortRevision(candidate.revision) });
+    }
+    const lines = [`- ${inline(bundle.name)}: ${version}`, `  ${inline(translate(result.detail, result.message, language))}`];
+    if (source.kind !== 'unsupported')
+        lines.push(`  ${t(language, 'ui.source', { source: providerLabel(source, language) })}`);
+    if (result.status === 'update-available')
+        lines.push(`  ${t(language, 'ui.planHint', { name: inline(bundle.name) })}`);
+    return lines;
+}
+/** Group check outcomes by actionability without hiding skipped or failed packages. */
+export function formatChecks(results, language = 'en') {
+    if (results.length === 0)
+        return t(language, 'ui.check.empty');
+    const groups = ORDER.map(status => ({ status, entries: results.filter(result => result.status === status) }))
+        .filter(group => group.entries.length > 0);
+    const lines = [t(language, 'ui.check.summary', { count: results.length }),
+        groups.map(group => `${t(language, STATUS[group.status])}: ${group.entries.length}`).join(' | ')];
+    for (const { status, entries } of groups) {
+        lines.push('', t(language, 'ui.group', { title: t(language, STATUS[status]), count: entries.length }));
+        for (const entry of entries)
+            lines.push(...checkLines(entry, language));
+    }
+    lines.push('', t(language, 'ui.check.readOnly'));
+    return lines.join('\n');
+}
+/** Render the exact target, expiry and every warning before the unchanged user-only command. */
+export function formatPlan(plan, language = 'en') {
+    const current = plan.bundle.version ? `v${inline(plan.bundle.version)}` : t(language, 'ui.plan.unknownVersion');
+    const target = plan.candidate.version ? `v${inline(plan.candidate.version)}` : plan.candidate.revision
+        ? t(language, 'ui.plan.commit', { revision: shortRevision(plan.candidate.revision) }) : t(language, 'ui.plan.selected');
+    const currentCommit = plan.source.kind === 'github-source' && plan.source.currentRevision
+        ? t(language, 'ui.plan.currentCommit', { revision: shortRevision(plan.source.currentRevision) }) : '';
+    const lines = [t(language, 'ui.plan.title', { name: inline(plan.bundle.name) }), '',
+        t(language, 'ui.plan.current', { version: current + currentCommit }), t(language, 'ui.plan.target', { target }),
+        t(language, 'ui.source', { source: providerLabel(plan.source, language) }),
+        t(language, 'ui.plan.selection', { state: t(language, plan.bundle.enabled ? 'ui.enabled' : 'ui.disabled') }),
+        ...targetLines(plan.candidate, language), t(language, 'ui.plan.expires', { time: inline(plan.expiresAt) }), '', t(language, 'ui.plan.risks')];
+    plan.warnings.forEach((warning, index) => lines.push(`- ${inline(translate(plan.warningDetails?.[index], warning, language))}`));
+    lines.push('', t(language, 'ui.plan.confirm'), inline(plan.command));
+    return lines.join('\n');
+}
+function stageLines(name, result, language) {
+    if (!result)
+        return [];
+    const labels = {
+        applied: 'ui.stage.applied', 'restart-required': 'ui.stage.restart', failed: 'ui.stage.failed',
+        cancelled: 'ui.stage.cancelled', overridden: 'ui.stage.overridden',
+    };
+    const lines = [`${t(language, name)}: ${t(language, labels[result.application])}`];
+    if (result.error) {
+        lines.push(`  ${t(language, 'ui.stage.reason', { code: inline(result.error.code) })}`);
+        if (result.error.diagnostic)
+            for (const line of result.error.diagnostic.split(/\r?\n/))
+                lines.push(`  ${inline(line)}`);
+    }
+    if (result.pendingBuilds?.length)
+        lines.push(`  ${t(language, 'ui.stage.builds', { names: result.pendingBuilds.map(inline).join(', ') })}`);
+    if (result.restartReason)
+        lines.push(`  ${t(language, 'ui.stage.restartReason', { reason: inline(result.restartReason) })}`);
+    return lines;
+}
+/** Preserve partial failures and raw third-party diagnostics in both supported languages. */
+export function formatApply(result, language = 'en') {
+    const title = t(language, result.status === 'updated' ? 'ui.apply.updated' : result.status === 'restart-required' ? 'ui.apply.restart' : 'ui.apply.failed');
+    const lines = [title, '', inline(translate(result.detail, result.message, language)),
+        ...stageLines('ui.apply.removal', result.removal, language), ...stageLines('ui.apply.installation', result.installation, language)];
+    if (result.remaining) {
+        const bundle = result.remaining;
+        const state = t(language, !bundle.installed ? 'ui.notInstalled' : bundle.availability === 'missing' ? 'ui.missing' : bundle.enabled ? 'ui.enabled' : 'ui.disabled');
+        lines.push('', t(language, 'ui.apply.observed', { name: inline(bundle.name), version: bundle.version ? ` v${inline(bundle.version)}` : '', state }));
+        if (bundle.error)
+            lines.push(t(language, 'ui.problem', { code: inline(bundle.error.code) }));
+    }
+    else
+        lines.push('', t(language, 'ui.apply.unconfirmed'));
+    if (result.status === 'failed' && result.recovery)
+        lines.push('', t(language, 'ui.apply.recovery'), ...targetLines(result.recovery, language));
+    if (result.status === 'restart-required')
+        lines.push('', t(language, 'ui.apply.restartHint'));
+    return lines.join('\n');
+}
+/** Render help without translating literal command keywords or the explicit risk acknowledgement. */
+export function formatUsage(language = 'en') {
+    return [t(language, 'ui.help.title'), '',
+        `/plugin-updater                  ${t(language, 'ui.help.list')}`,
+        `/plugin-updater list             ${t(language, 'ui.help.list')}`,
+        `/plugin-updater check [package]  ${t(language, 'ui.help.check')}`,
+        `/plugin-updater plan [package ...|cancel]   ${t(language, 'ui.help.plan')}`,
+        `/plugin-updater update <package ...> [--accept-removal-risk]   ${t(language, 'ui.help.update')}`,
+        '/plugin-updater ok | confirm',
+        `/plugin-updater help             ${t(language, 'ui.help.help')}`, '', t(language, 'ui.help.language'), '', t(language, 'ui.help.risk')].join('\n');
+}
+/** Translate owned failures by identifier; never guess translations from arbitrary diagnostic text. */
+export function formatCommandError(error, language = 'en') {
+    return [t(language, 'ui.error.title'), '', translate(errorDetail(error), error instanceof Error ? error.message : t(language, 'error.command'), language),
+        '', t(language, 'ui.error.help')].join('\n');
+}
+//# sourceMappingURL=format.js.map
