@@ -102,7 +102,9 @@ export declare const dictionaries: {
         readonly 'msg.githubOverride': "A GitHub override requires a matching installed GitHub origin.";
         readonly 'msg.unsupportedSource': "Unsupported source, host, or npm alias.";
         readonly 'msg.npmSelector': "Unsupported npm dependency selector.";
-        readonly 'msg.self': "Self-update is deferred to avoid unloading the active executor.";
+        readonly 'msg.self': "This plugin cannot update itself. Use an external method appropriate for its installation source.";
+        readonly 'msg.selfUpdateAvailable': "An update target is available. This plugin cannot update itself; use an external method appropriate for its installation source.";
+        readonly 'msg.selfPinnedUpdate': "A newer version is available, but this package is pinned. This plugin cannot update itself; use an external method appropriate for its installation source.";
         readonly 'msg.unavailable': "The package is not available as an installed bundle.";
         readonly 'msg.provided': "This bundle is supplied by the DSH installation.";
         readonly 'msg.official': "Use the official update target already provided by DSH.";
@@ -252,6 +254,8 @@ export declare const dictionaries: {
         'msg.unsupportedSource': string;
         'msg.npmSelector': string;
         'msg.self': string;
+        'msg.selfUpdateAvailable': string;
+        'msg.selfPinnedUpdate': string;
         'msg.unavailable': string;
         'msg.provided': string;
         'msg.official': string;

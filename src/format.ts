@@ -3,6 +3,7 @@ import { errorDetail } from './errors.js';
 import { t, translate } from './i18n.js';
 import type { Language, MessageKey } from './i18n.js';
 import { githubRepository, releaseAttachment } from './sources.js';
+import { isActionable } from './updater.js';
 import type { ApplyResult, CheckResult, InstalledBundle, ManagementResult, UpdateCandidate, UpdateSource } from './types.js';
 
 const STATUS: Record<CheckResult['status'], MessageKey> = {
@@ -67,7 +68,7 @@ function checkLines(result: CheckResult, language: Language): string[] {
   }
   const lines = [`- ${inline(bundle.name)}: ${version}`, `  ${inline(translate(result.detail, result.message, language))}`];
   if (source.kind !== 'unsupported') lines.push(`  ${t(language, 'ui.source', { source: providerLabel(source, language) })}`);
-  if (result.status === 'update-available') lines.push(`  ${t(language, 'ui.planHint', { name: inline(bundle.name) })}`);
+  if (isActionable(result)) lines.push(`  ${t(language, 'ui.planHint', { name: inline(bundle.name) })}`);
   return lines;
 }
 

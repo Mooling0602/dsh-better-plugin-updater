@@ -143,8 +143,8 @@ test('provider and coordinator reasons and caught errors carry owned translation
   manager.listBundles = async () => [bundle];
   client.get = async () => ({});
   assert.match(formatChecks(await updater.check(), 'zh'), /仓库元数据中的包标识不一致/);
-  manager.listBundles = async () => [{ ...bundle, name: 'dsh-better-plugin-updater' }];
-  assert.match(formatChecks(await updater.check(), 'zh'), /暂不支持自更新/);
+  manager.listBundles = async () => [{ ...bundle, removable: false }];
+  assert.match(formatChecks(await updater.check(), 'zh'), new RegExp(dictionaries.zh['msg.protected']));
   await updater.dispose();
 });
 

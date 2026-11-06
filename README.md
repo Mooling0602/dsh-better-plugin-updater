@@ -70,7 +70,7 @@ The same checks are available to the agent as the read-only `plugin_updates` too
 
 Fixed npm versions are checked for newer versions but remain protected from updates. Use `/plugin-updater update foo --allow-pinned` to authorize one update and confirm it normally, or set `allowPinned` in the configuration for ongoing authorization. The one-time option cannot be combined with `--accept-removal-risk`, and the newly installed version remains pinned. Pinned Git commits remain protected; configure `allowPinned` or the Git ref to follow. See [configuration](#configuration).
 
-DSH's own bundles, protected packages and this plugin itself are skipped, and their update buttons keep working as before.
+DSH's own bundles and protected packages are skipped. This plugin can check its own supported installation source, but it cannot update itself. Use an external method appropriate for its source. A local linked installation is not supported by the update checker.
 
 ## Risks
 

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Updater, createProviders } from '../dist/core.js';
 import { createUpdaterCommand } from '../dist/commands.js';
+import { createUpdaterTool } from '../dist/tools.js';
 
 function fixture(options = {}) {
   let bundles = [{ name: 'plugin', version: '1.0.0', source: 'plugin@^1.0.0', enabled: false, installed: true, removable: true, availability: 'profile' }];
@@ -180,11 +181,10 @@ test('one-time npm authorization does not authorize pinned Git sources', async (
   await f.updater.dispose();
 });
 
-test('protected, installation, official-target and self bundles are not checked', async () => {
+test('protected, installation and official-target bundles are not checked', async () => {
   const f = fixture();
   const base = f.bundles[0];
   f.bundles = [
-    { ...base, name: 'dsh-better-plugin-updater' },
     { ...base, name: 'official', installTarget: { spec: 'official@2', version: '2' } },
     { ...base, name: 'shipped', availability: 'installation' },
     { ...base, name: 'protected', removable: false },
@@ -195,6 +195,133 @@ test('protected, installation, official-target and self bundles are not checked'
   await assert.rejects(prepare(f.updater, 'official'));
   await assert.rejects(f.updater.check('not-present'));
   assert.deepEqual(f.calls, []);
+});
+
+test('self checks supported npm and GitHub sources without creating update plans', async () => {
+  const name = 'dsh-better-plugin-updater';
+  const next = 'a'.repeat(40);
+  const requests = [];
+  const client = { async get(url) {
+    requests.push(url);
+    if (url.startsWith('https://registry.test/')) return { name, 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name, version: '2.0.0', dsh: { bundle: {} } } } };
+    return { sha: next };
+  } };
+  const f = fixture({ providers: createProviders(), client, currentRevision: async () => 'b'.repeat(40) });
+  const base = { ...f.bundles[0], name };
+  for (const [source, kind, candidate] of [
+    [`${name}@^1.0.0`, 'npm', '2.0.0'],
+    ['github:owner/repo#main', 'github-source', next],
+  ]) {
+    f.bundles = [{ ...base, source }];
+    const before = requests.length;
+    const [result] = await f.updater.check(name);
+    assert.equal(result.status, 'update-available');
+    assert.equal(result.source.kind, kind);
+    assert.equal(result.candidate.version ?? result.candidate.revision, candidate);
+    assert.ok(requests.length > before);
+    assert.throws(() => f.updater.prepare(result));
+    assert.throws(() => f.updater.prepare(result, true));
+    assert.deepEqual(f.calls, []);
+  }
+  f.bundles = [{ ...base, source: `${name}@1.0.0` }];
+  const [pinned] = await f.updater.check(name);
+  assert.equal(pinned.status, 'pinned');
+  assert.equal(pinned.candidate.version, '2.0.0');
+  assert.throws(() => f.updater.prepare(pinned, true));
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('self read-only command and tool expose provider check results', async () => {
+  const name = 'dsh-better-plugin-updater';
+  const client = { async get() { return { name, 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name, version: '2.0.0', dsh: { bundle: {} } } } }; } };
+  const f = fixture({ providers: createProviders(), client });
+  f.bundles = [{ ...f.bundles[0], name, source: `${name}@^1.0.0` }];
+  const command = await createUpdaterCommand(f.updater).handler({ rawInput: `check ${name}` });
+  assert.equal(command.kind, 'success');
+  assert.match(command.text, /2\.0\.0/);
+  assert.match(command.text, /cannot update itself/);
+  assert.doesNotMatch(command.text, new RegExp(`/plugin-updater update ${name}`));
+  const chinese = await createUpdaterCommand(f.updater).handler({ rawInput: `check ${name} --lang zh` });
+  assert.match(chinese.text, /不能自行更新/);
+  assert.doesNotMatch(chinese.text, new RegExp(`/plugin-updater update ${name}`));
+  const tool = createUpdaterTool(f.updater);
+  const results = JSON.parse(await tool.execute({ action: 'check', target: name }, { signal: new AbortController().signal }));
+  assert.equal(results[0].status, 'update-available');
+  assert.equal(results[0].candidate.version, '2.0.0');
+  assert.match(results[0].message, /cannot update itself/);
+  f.bundles = [{ ...f.bundles[0], source: `${name}@1.0.0` }];
+  const pinned = await createUpdaterCommand(f.updater).handler({ rawInput: `check ${name}` });
+  assert.match(pinned.text, /cannot update itself/);
+  assert.doesNotMatch(pinned.text, /--allow-pinned/);
+  const pinnedTool = JSON.parse(await tool.execute({ action: 'check', target: name }, { signal: new AbortController().signal }));
+  assert.equal(pinnedTool[0].status, 'pinned');
+  assert.match(pinnedTool[0].message, /cannot update itself/);
+  assert.doesNotMatch(pinnedTool[0].message, /--allow-pinned/);
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('self plans are rejected even when passed a forged actionable check', async () => {
+  const f = fixture();
+  const [result] = await f.updater.check('plugin');
+  const name = 'dsh-better-plugin-updater';
+  const forged = { ...result, bundle: { ...result.bundle, name }, source: { ...result.source, packageName: name }, candidate: { ...result.candidate, spec: `${name}@2.0.0` } };
+  assert.throws(() => f.updater.prepare(forged));
+  assert.throws(() => f.updater.prepare(forged, true));
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('self checks local links as unsupported without contacting a provider', async () => {
+  const f = fixture({ providers: createProviders() });
+  f.bundles = [{ ...f.bundles[0], name: 'dsh-better-plugin-updater', source: 'link:/tmp/updater' }];
+  const [result] = await f.updater.check();
+  assert.equal(result.status, 'unsupported');
+  assert.equal(result.source.kind, 'unsupported');
+  assert.throws(() => f.updater.prepare(result));
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('self update commands cannot prepare or apply, even with risk and pin flags', async () => {
+  const name = 'dsh-better-plugin-updater';
+  const client = { async get() { return { name, 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name, version: '2.0.0', dsh: { bundle: {} } } } }; } };
+  for (const source of [`${name}@^1.0.0`, `${name}@1.0.0`]) {
+    const f = fixture({ providers: createProviders(), client });
+    f.bundles = [{ ...f.bundles[0], name, source }];
+    const command = createUpdaterCommand(f.updater);
+    const agent = {};
+    for (const rawInput of [`update ${name}`, `update ${name} --accept-removal-risk`, `update ${name} --allow-pinned`, 'ok', 'confirm']) {
+      assert.equal((await command.handler({ rawInput, agent })).kind, 'error', rawInput);
+      assert.deepEqual(f.calls, []);
+    }
+    await f.updater.dispose();
+  }
+});
+
+test('batch update never prepares or applies a self target', async () => {
+  const name = 'dsh-better-plugin-updater';
+  const client = { async get(url) {
+    const packageName = url.endsWith(name) ? name : 'plugin';
+    return { name: packageName, 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name: packageName, version: '2.0.0', dsh: { bundle: {} } } } };
+  } };
+  for (const accept of [false, true]) {
+    const f = fixture({ providers: createProviders(), client });
+    f.bundles = [{ ...f.bundles[0], name, source: `${name}@^1.0.0` }, f.bundles[0]];
+    const prepared = [];
+    const preparePlan = f.updater.prepare.bind(f.updater);
+    f.updater.prepare = (result, ...args) => { prepared.push(result.bundle.name); return preparePlan(result, ...args); };
+    const command = createUpdaterCommand(f.updater);
+    const agent = {};
+    await command.handler({ rawInput: `update *${accept ? ' --accept-removal-risk' : ''}`, agent });
+    if (!accept) await command.handler({ rawInput: 'ok', agent });
+    assert.equal(prepared.includes(name), false);
+    assert.equal(f.calls.some(call => call[0] === 'remove' && call[1] === name), false);
+    assert.equal(f.calls.some(call => call[0] === 'install' && call[1].startsWith(`${name}@`)), false);
+    assert.deepEqual(f.calls.map(call => call[0]), ['remove', 'install']);
+    await f.updater.dispose();
+  }
 });
 
 test('a failed, cancelled or overridden removal never proceeds to installation', async () => {

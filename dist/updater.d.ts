@@ -10,6 +10,8 @@ export interface UpdaterOptions {
     readonly planTtlMs?: number | (() => number);
     readonly now?: () => number;
 }
+/** Identify the active executor, which can be checked but cannot update itself. */
+export declare function isSelfBundle(bundle: Pick<InstalledBundle, 'name'>): boolean;
 /** Decide whether a checked target may enter an update confirmation. */
 export declare function isActionable(result: CheckResult | undefined, allowPinned?: boolean): boolean;
 /** A profile-local coordinator. Construction does no I/O; checks never perform package writes. */

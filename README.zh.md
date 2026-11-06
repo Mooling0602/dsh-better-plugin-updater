@@ -70,7 +70,7 @@ dsh plugin --profile web remove dsh-better-plugin-updater
 
 固定版本的 npm 插件会检查是否有新版本，但仍受保护，不会直接更新。使用 `/plugin-updater update foo --allow-pinned` 可临时允许本次更新，仍需正常确认；也可以在配置中设置 `allowPinned` 持续允许更新。临时选项不能与 `--accept-removal-risk` 同时使用，安装后的版本仍会固定。固定的 Git 提交也受保护，可设置 `allowPinned` 或指定要跟随的 Git ref。见[配置](#配置)。
 
-DSH 自带的插件包、受保护的包以及本插件自身不会被检查，它们的更新按钮一切照旧。
+DSH 自带的插件包和受保护的包会被跳过。本插件可以检查自身受支持的安装来源，但不能自行更新；请根据安装来源使用外部方式更新。本地链接安装不受更新检查器支持。
 
 ## 风险
 

@@ -2,6 +2,7 @@
 import { errorDetail } from './errors.js';
 import { t, translate } from './i18n.js';
 import { githubRepository, releaseAttachment } from './sources.js';
+import { isActionable } from './updater.js';
 const STATUS = {
     'update-available': 'ui.status.update', current: 'ui.status.current', pinned: 'ui.status.pinned',
     unknown: 'ui.status.unknown', unsupported: 'ui.status.unsupported', skipped: 'ui.status.skipped', error: 'ui.status.error',
@@ -66,7 +67,7 @@ function checkLines(result, language) {
     const lines = [`- ${inline(bundle.name)}: ${version}`, `  ${inline(translate(result.detail, result.message, language))}`];
     if (source.kind !== 'unsupported')
         lines.push(`  ${t(language, 'ui.source', { source: providerLabel(source, language) })}`);
-    if (result.status === 'update-available')
+    if (isActionable(result))
         lines.push(`  ${t(language, 'ui.planHint', { name: inline(bundle.name) })}`);
     return lines;
 }

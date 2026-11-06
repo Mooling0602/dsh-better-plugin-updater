@@ -88,6 +88,8 @@ export declare const zh: {
     'msg.unsupportedSource': string;
     'msg.npmSelector': string;
     'msg.self': string;
+    'msg.selfUpdateAvailable': string;
+    'msg.selfPinnedUpdate': string;
     'msg.unavailable': string;
     'msg.provided': string;
     'msg.official': string;

@@ -17,9 +17,11 @@ function fingerprint(bundle) {
     return [bundle.name, bundle.version, bundle.source, bundle.enabled, bundle.installed,
         bundle.removable, bundle.availability, bundle.readOnlyReason, bundle.error, bundle.installTarget];
 }
+/** Identify the active executor, which can be checked but cannot update itself. */
+export function isSelfBundle(bundle) {
+    return bundle.name === 'dsh-better-plugin-updater';
+}
 function skipReason(bundle) {
-    if (bundle.name === 'dsh-better-plugin-updater')
-        return { key: 'msg.self' };
     if (!bundle.installed || bundle.availability === 'missing')
         return { key: 'msg.unavailable' };
     if (bundle.availability === 'installation')
@@ -38,7 +40,7 @@ function failureMessage(error) {
 }
 /** Decide whether a checked target may enter an update confirmation. */
 export function isActionable(result, allowPinned = false) {
-    if (!result?.candidate)
+    if (!result?.candidate || isSelfBundle(result.bundle))
         return false;
     if (result.status === 'update-available')
         return result.source.kind !== 'unsupported' && !result.source.pinned;
@@ -128,7 +130,9 @@ export class Updater {
                 const provider = this.options.providers.find(item => item.kind === source.kind);
                 if (!provider)
                     throw new UpdaterError('error.providerMissing');
-                results.push({ bundle, source, ...await provider.check(bundle, source, this.options.client, signal) });
+                const checked = await provider.check(bundle, source, this.options.client, signal);
+                const selfNotice = isSelfBundle(bundle) && (checked.status === 'update-available' || checked.detail?.key === 'msg.npmPinnedUpdate');
+                results.push({ bundle, source, ...checked, ...(selfNotice ? message(checked.status === 'pinned' ? 'msg.selfPinnedUpdate' : 'msg.selfUpdateAvailable') : {}) });
             }
             catch (error) {
                 signal.throwIfAborted();
@@ -140,6 +144,8 @@ export class Updater {
     }
     /** Freeze a checked target, with optional one-time authorization for a pinned npm package. */
     prepare(result, allowPinned = false) {
+        if (result && isSelfBundle(result.bundle))
+            throw new UpdaterError('msg.self');
         if (!isActionable(result, allowPinned) || !result?.candidate) {
             if (result?.detail)
                 throw new UpdaterError(result.detail.key, result.detail.params);
@@ -181,7 +187,7 @@ export class Updater {
     }
     async applyInternal(plan) {
         const current = (await this.list()).find(bundle => bundle.name === plan.bundle.name);
-        if (!current || skipReason(current) || !isDeepStrictEqual(fingerprint(current), fingerprint(plan.bundle))
+        if (!current || isSelfBundle(current) || skipReason(current) || !isDeepStrictEqual(fingerprint(current), fingerprint(plan.bundle))
             || !isDeepStrictEqual(await this.source(current), plan.source))
             throw new UpdaterError('error.stale');
         this.abort.signal.throwIfAborted();
