@@ -86,22 +86,6 @@ export function formatChecks(results, language = 'en') {
     lines.push('', t(language, 'ui.check.readOnly'));
     return lines.join('\n');
 }
-/** Render the exact target, expiry and every warning before the unchanged user-only command. */
-export function formatPlan(plan, language = 'en') {
-    const current = plan.bundle.version ? `v${inline(plan.bundle.version)}` : t(language, 'ui.plan.unknownVersion');
-    const target = plan.candidate.version ? `v${inline(plan.candidate.version)}` : plan.candidate.revision
-        ? t(language, 'ui.plan.commit', { revision: shortRevision(plan.candidate.revision) }) : t(language, 'ui.plan.selected');
-    const currentCommit = plan.source.kind === 'github-source' && plan.source.currentRevision
-        ? t(language, 'ui.plan.currentCommit', { revision: shortRevision(plan.source.currentRevision) }) : '';
-    const lines = [t(language, 'ui.plan.title', { name: inline(plan.bundle.name) }), '',
-        t(language, 'ui.plan.current', { version: current + currentCommit }), t(language, 'ui.plan.target', { target }),
-        t(language, 'ui.source', { source: providerLabel(plan.source, language) }),
-        t(language, 'ui.plan.selection', { state: t(language, plan.bundle.enabled ? 'ui.enabled' : 'ui.disabled') }),
-        ...targetLines(plan.candidate, language), t(language, 'ui.plan.expires', { time: inline(plan.expiresAt) }), '', t(language, 'ui.plan.risks')];
-    plan.warnings.forEach((warning, index) => lines.push(`- ${inline(translate(plan.warningDetails?.[index], warning, language))}`));
-    lines.push('', t(language, 'ui.plan.confirm'), inline(plan.command));
-    return lines.join('\n');
-}
 function stageLines(name, result, language) {
     if (!result)
         return [];
@@ -148,8 +132,7 @@ export function formatUsage(language = 'en') {
         `/plugin-updater                  ${t(language, 'ui.help.list')}`,
         `/plugin-updater list             ${t(language, 'ui.help.list')}`,
         `/plugin-updater check [package]  ${t(language, 'ui.help.check')}`,
-        `/plugin-updater plan [package ...|cancel]   ${t(language, 'ui.help.plan')}`,
-        `/plugin-updater update <package ...> [--accept-removal-risk]   ${t(language, 'ui.help.update')}`,
+        `/plugin-updater update <package ...> [--allow-pinned | --accept-removal-risk]   ${t(language, 'ui.help.update')}`,
         '/plugin-updater ok | confirm',
         `/plugin-updater help             ${t(language, 'ui.help.help')}`, '', t(language, 'ui.help.language'), '', t(language, 'ui.help.risk')].join('\n');
 }

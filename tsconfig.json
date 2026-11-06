@@ -5,6 +5,7 @@
     "types": ["node"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "jsx": "react-jsx",
     "rootDir": "src",
     "outDir": "dist",
     "declaration": true,
@@ -16,7 +17,9 @@
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

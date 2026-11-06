@@ -4,8 +4,10 @@ import type { JsonClient } from './types.js';
 
 /** Request limits and injectable transport. A token is sent only to api.github.com. */
 export interface JsonClientOptions {
-  readonly timeoutMs?: number;
-  readonly maxBytes?: number;
+  /** A fixed limit, or a reader evaluated per request so a saved setting applies at once. */
+  readonly timeoutMs?: number | (() => number);
+  /** A fixed limit, or a reader evaluated per request so a saved setting applies at once. */
+  readonly maxBytes?: number | (() => number);
   /** Static token for standalone consumers; ignored when a resolver is supplied. */
   readonly githubToken?: string;
   /** Resolve anew only for the exact GitHub API origin. Absence does not fall back to the static token. */
@@ -69,13 +71,20 @@ function httpError(response: Response, github: boolean): UpdaterError {
 /** Create a JSON client with a deadline covering both headers and streamed body consumption. */
 export function createJsonClient(options: JsonClientOptions = {}): JsonClient {
   const transport = options.fetch ?? globalThis.fetch;
-  const timeoutMs = options.timeoutMs ?? 15_000;
-  const maxBytes = options.maxBytes ?? 4 * 1024 * 1024;
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < 1) {
-    throw new UpdaterError('error.requestLimits');
-  }
+  const readLimit = (setting: number | (() => number) | undefined, fallback: number): number =>
+    typeof setting === 'function' ? setting() : setting ?? fallback;
+  const limits = (): { timeoutMs: number; maxBytes: number } => {
+    const timeoutMs = readLimit(options.timeoutMs, 15_000);
+    const maxBytes = readLimit(options.maxBytes, 4 * 1024 * 1024);
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+      throw new UpdaterError('error.requestLimits');
+    }
+    return { timeoutMs, maxBytes };
+  };
+  limits();
   return {
     async get(raw, signal) {
+      const { timeoutMs, maxBytes } = limits();
       let url: URL;
       try { url = new URL(raw); } catch { throw new UpdaterError('error.requestUrl'); }
       const releasePage = url.origin === 'https://api.github.com'

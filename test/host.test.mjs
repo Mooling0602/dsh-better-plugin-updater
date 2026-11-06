@@ -4,7 +4,6 @@ import { Context } from '@deepseek-ai/cordis';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ScheduledUpdates } from '../dist/scheduled.js';
 import * as plugin from '../dist/index.js';
 
 function host() {
@@ -44,7 +43,7 @@ test('real Cordis activation registers the service, command and read-only tool, 
   assert.equal(tool.parameters.type, 'object');
   assert.deepEqual(tool.parameters.required, ['action']);
   assert.equal(tool.parameters.additionalProperties, false);
-  assert.deepEqual(tool.parameters.properties.action.enum, ['list', 'check', 'plan']);
+  assert.deepEqual(tool.parameters.properties.action.enum, ['list', 'check']);
   const execution = { signal: new AbortController().signal };
   assert.deepEqual(JSON.parse(await tool.execute({ action: 'list' }, execution)), []);
   await assert.rejects(tool.execute({ action: 'update', target: 'anything' }, execution));
@@ -129,36 +128,32 @@ test('Host lazily resolves current credentials, supports optional services, and 
   }
 });
 
-test('Host startup applies persisted tasks through its plugin manager', { timeout: 5000 }, async t => {
+test('Host startup does not execute or alter an existing queue file', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'dsh-updater-host-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const h = host();
   h.ctx.get('profileContext').dir = dir;
-  let bundle = { name: 'plugin', version: '1.0.0', source: 'plugin@^1', enabled: true, installed: true, removable: true, availability: 'profile' };
-  const manager = h.ctx.get('pluginManager');
-  manager.listBundles = async () => bundle ? [bundle] : [];
-  let resolveInstall;
-  const installed = new Promise(resolve => { resolveInstall = resolve; });
-  manager.removeBundle = async () => { bundle = undefined; return { application: 'applied' }; };
-  manager.installBundle = async (spec) => { bundle = { name: 'plugin', version: '2.0.0', source: spec, enabled: true, installed: true, removable: true, availability: 'profile' }; resolveInstall(); return { application: 'applied' }; };
-  const queue = new ScheduledUpdates(dir, { async applyDeferred() { throw new Error('unexpected'); } });
-  await queue.schedule([{ id: crypto.randomUUID(), createdAt: new Date().toISOString(), expiresAt: new Date().toISOString(), command: '/plugin-updater update plugin', bundle,
-    source: { kind: 'npm', packageName: 'plugin', registry: 'https://registry.test/', channel: 'latest', pinned: false },
-    candidate: { spec: 'plugin@2.0.0', version: '2.0.0', registry: 'https://registry.test/' }, warnings: [] }]);
   const file = join(dir, '.better-plugin-updater-queue.json');
-  const saved = JSON.parse(await readFile(file, 'utf8'));
-  saved.entries[0].creator = 'previous-process'; saved.entries[0].pid = 2147483647;
-  await writeFile(file, JSON.stringify(saved));
+  const saved = JSON.stringify({ version: 1, entries: [{ state: 'pending' }] });
+  await writeFile(file, saved);
+  let routes = 0;
+  h.ctx.provide('webServer', { register() { routes++; return () => {}; } });
+  h.ctx.provide('connection', { requestRejection() { return undefined; } });
   const fiber = h.ctx.plugin(plugin, {});
-  try { await fiber.await(); await installed; assert.equal(bundle.version, '2.0.0'); }
-  finally { await fiber.dispose(); }
+  try {
+    await fiber.await();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.writes, 0);
+    assert.equal(routes, 0);
+    assert.equal(await readFile(file, 'utf8'), saved);
+  } finally { await fiber.dispose(); }
 });
 
 test('configuration has no scheduled work and rejects invalid request bounds', () => {
-  const defaults = plugin.Config.parse({});
+  const defaults = plugin.Config({});
   assert.deepEqual(defaults.sources, {});
   assert.deepEqual(defaults.indexes, []);
-  assert.equal(defaults.githubTokenEnv, 'GITHUB_TOKEN');
-  assert.throws(() => plugin.Config.parse({ githubTokenEnv: 'not a reference' }));
-  assert.throws(() => plugin.Config.parse({ requestTimeoutMs: 0 }));
+  assert.equal(defaults.githubTokenEnv.get(), 'GITHUB_TOKEN');
+  assert.throws(() => plugin.Config({ githubTokenEnv: 'not a reference' }));
+  assert.throws(() => plugin.Config({ requestTimeoutMs: 0 }));
 });

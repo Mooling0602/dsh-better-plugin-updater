@@ -7,16 +7,13 @@ function fixture() {
   const calls = [];
   let bundles = ['plugin-a', 'plugin-b', '@scope/plugin-c'].map(name => ({ name, version: '1.0.0', source: `${name}@^1`, installed: true, enabled: true, removable: true, availability: 'profile' }));
   let version = '2.0.0';
-  const saved = [];
   const updater = {
     async list() { calls.push(['list']); return structuredClone(bundles); },
     async check(name, signal) { calls.push(['check', name, signal]); return bundles.filter(b => !name || b.name === name).map(bundle => ({ bundle, source: { kind: 'npm', packageName: bundle.name, registry: 'https://registry.test/', channel: 'latest', pinned: false }, status: 'update-available', message: 'Update available.', candidate: { spec: `${bundle.name}@${version}`, version } })); },
     prepare(result) { return { id: result.bundle.name, bundle: result.bundle, source: result.source, candidate: result.candidate, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60000).toISOString(), command: `/plugin-updater update ${result.bundle.name}`, warnings: ['Recovery is manual.'] }; },
-    async plan(name, signal) { return this.prepare((await this.check(name, signal))[0]); },
     async apply(id, accepted) { calls.push(['apply', id, accepted]); return { status: 'updated', message: 'Fixture success.' }; },
   };
-  const scheduled = { async schedule(plans) { saved.push(...plans); }, async list() { return saved.map(plan => ({ plan, state: 'pending' })); }, async cancel() { const n = saved.length; saved.length = 0; return n; } };
-  return { updater, calls, scheduled, saved, command: createUpdaterCommand(updater, { scheduled }), tool: createUpdaterTool(updater), setVersion(v) { version = v; }, setBundles(v) { bundles = v; }, get bundles() { return bundles; } };
+  return { updater, calls, command: createUpdaterCommand(updater), tool: createUpdaterTool(updater), setVersion(v) { version = v; }, setBundles(v) { bundles = v; }, get bundles() { return bundles; } };
 }
 
 test('list, help, check and read-only tool remain available', async () => {
@@ -60,13 +57,16 @@ test('risk flag applies immediately; unmatched patterns are reported', async () 
   assert.deepEqual(f.calls.filter(c => c[0] === 'apply').map(c => c[1]), ['@scope/plugin-c']);
 });
 
-test('plan schedules exact targets, can list and cancel, and never executes immediately', async () => {
+test('removed plan action is rejected by commands and the tool without writes', async () => {
   const f = fixture();
-  assert.equal((await f.command.handler({ rawInput: 'plan plugin-*' })).kind, 'success');
-  assert.equal(f.saved.length, 2);
-  assert.match((await f.command.handler({ rawInput: 'plan' })).text, /plugin-a@2\.0\.0/);
-  assert.match((await f.command.handler({ rawInput: 'plan cancel' })).text, /Cancelled 2/);
-  assert.equal(f.saved.length, 0);
+  const signal = new AbortController().signal;
+  for (const rawInput of ['plan', 'plan plugin-a', 'plan cancel']) {
+    const result = await f.command.handler({ rawInput });
+    assert.equal(result.kind, 'error');
+    assert.doesNotMatch(result.text, /\/plugin-updater plan/);
+  }
+  assert.deepEqual(f.tool.parameters.properties.action.enum, ['list', 'check']);
+  await assert.rejects(f.tool.execute({ action: 'plan', target: 'plugin-a' }, { signal }));
   assert.equal(f.calls.filter(c => c[0] === 'apply').length, 0);
 });
 

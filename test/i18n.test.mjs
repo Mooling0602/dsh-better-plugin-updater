@@ -6,7 +6,7 @@ import { dictionaries, message, resolveLanguage, t, translate } from '../dist/i1
 import { UpdaterError } from '../dist/errors.js';
 import { createUpdaterCommand } from '../dist/commands.js';
 import { createUpdaterTool } from '../dist/tools.js';
-import { formatApply, formatChecks, formatCommandError, formatInventory, formatPlan, formatUsage } from '../dist/format.js';
+import { formatApply, formatChecks, formatCommandError, formatInventory, formatUsage } from '../dist/format.js';
 import { createJsonClient, createProviders, Updater } from '../dist/core.js';
 
 const bundle = { name: 'plugin', version: '1.0.0', source: 'plugin@^1', installed: true, enabled: false, removable: true, availability: 'profile' };
@@ -29,7 +29,7 @@ test('translation interpolates literal values once and never interprets arbitrar
   assert.ok(t('zh', 'warning.gitPin', { name: literal, ref: 'main' }).includes(literal));
   assert.equal(translate(undefined, 'External diagnostic.', 'zh'), 'External diagnostic.');
   assert.equal(translate({ key: 'unknown.external' }, 'Keep this diagnostic.', 'zh'), 'Keep this diagnostic.');
-  assert.match(formatCommandError(new UpdaterError('error.expired'), 'zh'), /计划不存在或已过期/);
+  assert.match(formatCommandError(new UpdaterError('error.expired'), 'zh'), /确认不存在或已过期/);
   assert.ok(formatCommandError(new Error(dictionaries.en['error.expired']), 'zh').includes(dictionaries.en['error.expired']));
   assert.match(formatCommandError(new DOMException('Aborted', 'AbortError'), 'zh'), /操作已取消/);
 });
@@ -61,19 +61,13 @@ test('Chinese formatters translate headers, statuses, owned reasons, risks and o
   assert.match(checks, /可更新（1）/);
   assert.match(checks, /有更新的版本可用/);
   assert.match(checks, /v1\.0\.0 -> v2\.0\.0/);
-  assert.match(checks, /\/plugin-updater plan plugin/);
-  const warningDetails = [{ key: 'warning.nonAtomic' }, { key: 'warning.recovery' }, { key: 'warning.permissions' }, { key: 'warning.npmPin', params: { name: bundle.name } }];
-  const plan = { id: 'id', createdAt: '2026-11-01T00:00:00Z', expiresAt: '2026-11-01T00:10:00Z', command: '/plugin-updater update id --accept-removal-risk', bundle, source: providerSource, candidate,
-    warnings: warningDetails.map(detail => t('en', detail.key, detail.params)), warningDetails };
-  const rendered = formatPlan(plan, 'zh');
-  assert.match(rendered, /更新计划：plugin/);
-  assert.match(rendered, /更新后状态：已禁用/);
-  assert.match(rendered, /不是原子操作/);
-  assert.match(rendered, /不会.*|人工操作/);
-  assert.ok(rendered.includes('sources[plugin].allowPinned'));
-  assert.ok(rendered.includes(candidate.registry));
-  assert.ok(rendered.endsWith(plan.command));
-  assert.doesNotMatch(rendered, /Recovery is manual|Risks:|Current:/);
+  assert.match(checks, /\/plugin-updater update plugin/);
+  assert.doesNotMatch(checks, /\/plugin-updater plan/);
+  const pinned = formatChecks([{ bundle, source: { ...providerSource, pinned: true }, candidate, status: 'pinned', ...message('msg.npmPinnedUpdate', { name: bundle.name }) }], 'zh');
+  assert.match(pinned, /候选版本 v2\.0\.0/);
+  assert.match(pinned, /发现更新版本，但此插件已固定版本/);
+  assert.ok(pinned.includes('sources[plugin].allowPinned'));
+  assert.doesNotMatch(pinned, /\/plugin-updater update plugin/);
   const applied = formatApply({ status: 'failed', ...message('msg.removalFailed'), removal: { application: 'failed', error: { code: 'external-code', diagnostic: 'Original external diagnostic.' }, pendingBuilds: ['package-build'] }, recovery: candidate }, 'zh');
   assert.match(applied, /更新未完成/);
   assert.match(applied, /移除阶段: 失败/);
@@ -91,7 +85,6 @@ function target() {
   const updater = {
     async list() { calls.push('list'); return []; },
     async check() { calls.push('check'); return [{ bundle, source: providerSource, status: 'current', ...message('msg.versionCurrent') }]; },
-    async plan() { throw new UpdaterError('error.expired'); },
     async apply(id, accepted) { calls.push(['apply', id, accepted]); return { status: 'failed', ...message('msg.removalFailed') }; },
   };
   return { updater, calls };
@@ -102,7 +95,7 @@ test('language overrides work before or after actions and never weaken risk ackn
   const command = createUpdaterCommand(updater);
   for (const rawInput of ['--lang zh help', 'help --lang zh']) assert.match((await command.handler({ rawInput })).text, /插件更新助手/);
   assert.match((await command.handler({ rawInput: 'check plugin --lang zh' })).text, /未发现更新的版本/);
-  assert.match((await command.handler({ rawInput: 'plan plugin --lang zh' })).text, /延迟更新不可用/);
+  assert.equal((await command.handler({ rawInput: 'plan plugin --lang zh' })).kind, 'error');
   const count = calls.length;
   for (const rawInput of ['--lang', '--lang ja', '--lang zh --lang en help']) {
     assert.equal((await command.handler({ rawInput })).kind, 'error');
@@ -143,8 +136,8 @@ test('provider and coordinator reasons and caught errors carry owned translation
   const manager = { async listBundles() { return [bundle]; }, async registries() { return { registry: providerSource.registry }; } };
   const client = { async get() { return { name: 'plugin', 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name: 'plugin', version: '2.0.0', dsh: { bundle: {} } } } }; } };
   const updater = new Updater({ manager, client, providers: createProviders() });
-  const plan = await updater.plan('plugin');
-  assert.match(formatPlan(plan, 'zh'), /固定到明确版本/);
+  const plan = updater.prepare((await updater.check('plugin'))[0]);
+  assert.match(translate(plan.warningDetails.at(-1), '', 'zh'), /固定到明确版本/);
   manager.listBundles = async () => [{ ...bundle, source: 'link:/tmp/local' }];
   assert.match(formatChecks(await updater.check(), 'zh'), /安装来源为本地目录或无法识别/);
   manager.listBundles = async () => [bundle];
@@ -186,20 +179,20 @@ test('GitHub rate-limit details survive real transport, providers, tools, plans 
     const result = JSON.parse(await createUpdaterTool(updater).execute({ action: 'check', target: bundle.name }, { signal: new AbortController().signal }));
     assert.deepEqual(result[0].detail, detail);
     assert.equal(result[0].message, checks[0].message);
-    const command = createUpdaterCommand(updater, { language: 'zh', scheduled: { async schedule() {}, async list() { return []; }, async cancel() { return 0; } } });
+    const command = createUpdaterCommand(updater, { language: 'zh' });
     const human = await command.handler({ rawInput: 'check release-plugin' });
     assert.match(human.text, /GitHub API 请求已达限额（HTTP 403）/);
     assert.ok(human.text.includes(retryAt));
     assert.doesNotMatch(human.text, /fixture-secret|Metadata request failed/);
-    await assert.rejects(updater.plan(bundle.name), error => {
+    assert.throws(() => updater.prepare(checks[0]), error => {
       assert.deepEqual(error.detail, detail);
       return true;
     });
-    const plan = await command.handler({ rawInput: 'plan release-plugin' });
-    assert.equal(plan.kind, 'error');
-    assert.match(plan.text, /GitHub API 请求已达限额（HTTP 403）/);
-    assert.ok(plan.text.includes(retryAt));
-    assert.equal(requests, 6);
+    const update = await command.handler({ rawInput: 'update release-plugin' });
+    assert.equal(update.kind, 'error');
+    assert.match(update.text, /GitHub API 请求已达限额（HTTP 403）/);
+    assert.ok(update.text.includes(retryAt));
+    assert.equal(requests, 5);
     assert.equal(writes, 0);
   } finally { await updater.dispose(); }
 });
@@ -222,6 +215,6 @@ test('Host auto language reads live settings, explicit configuration wins, and n
   assert.equal((await commands.get('plugin-updater').handler({ rawInput: '' })).text, '当前配置中没有插件包。');
   assert.equal(preference, 'en');
   await fiber.dispose();
-  assert.equal(plugin.Config.parse({}).language, 'auto');
-  assert.throws(() => plugin.Config.parse({ language: 'ja' }));
+  assert.equal(plugin.Config({}).language.get(), 'auto');
+  assert.throws(() => plugin.Config({ language: 'ja' }));
 });

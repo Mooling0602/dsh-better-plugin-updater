@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatApply, formatChecks, formatCommandError, formatInventory, formatPlan, formatUsage } from '../dist/format.js';
+import { formatApply, formatChecks, formatCommandError, formatInventory, formatUsage } from '../dist/format.js';
 
 const bundle = { name: 'example-plugin', version: '1.0.0', source: 'example-plugin@^1.0.0', enabled: true, installed: true, removable: true, availability: 'profile' };
 const source = { kind: 'npm', packageName: bundle.name, channel: 'latest', registry: 'https://registry.test/', pinned: false };
@@ -31,7 +31,8 @@ test('check output prioritizes available updates and groups every result without
   assert.match(text, /Checked 7 plugin bundle\(s\)/);
   assert.ok(text.indexOf('Update available (1):') < text.indexOf('Check failed (1):'));
   assert.match(text, /example-plugin: v1\.0\.0 -> v2\.0\.0/);
-  assert.match(text, /schedule: \/plugin-updater plan example-plugin/);
+  assert.match(text, /Update: \/plugin-updater update example-plugin/);
+  assert.doesNotMatch(text, /\/plugin-updater plan/);
   for (const status of statuses) assert.ok(text.includes(`${status}-plugin`));
   assert.match(text, /Checking does not install or remove anything/);
   notJson(text);
@@ -54,26 +55,6 @@ test('Git displays compact commit comparisons even when the manifest version is 
   const current = formatChecks([{ ...result, source: { ...git, currentRevision: revision }, candidate: offered, status: 'current' }]);
   assert.doesNotMatch(current, /->/);
   assert.match(current, /commit aaaaaaaaaaaa/);
-});
-
-test('plans keep exact full targets, expiry, risks and the copyable confirmation command', () => {
-  const command = '/plugin-updater update fixture-id --accept-removal-risk';
-  const plan = { id: 'fixture-id', createdAt: '2026-11-01T00:00:00Z', expiresAt: '2026-11-01T00:10:00Z', command,
-    bundle: { ...bundle, enabled: false }, source, candidate,
-    warnings: ['Removal followed by installation is not atomic.', 'Recovery is manual.'] };
-  const text = formatPlan(plan);
-  assert.match(text, /Update plan: example-plugin/);
-  assert.match(text, /Current: v1\.0\.0/);
-  assert.match(text, /Target: v2\.0\.0/);
-  assert.match(text, /After update: disabled \(unchanged\)/);
-  assert.ok(text.includes(`Install target: ${candidate.spec}`));
-  assert.ok(text.includes(candidate.registry));
-  assert.ok(text.includes(plan.expiresAt));
-  for (const warning of plan.warnings) assert.ok(text.includes(warning));
-  assert.ok(text.endsWith(command));
-  assert.ok(text.indexOf('Risks:') < text.indexOf(command));
-  assert.match(text, /Nothing has been changed/);
-  notJson(text);
 });
 
 test('partial update failures preserve stage diagnostics, pending builds and manual recovery', () => {

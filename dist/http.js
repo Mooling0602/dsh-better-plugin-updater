@@ -66,13 +66,19 @@ function httpError(response, github) {
 /** Create a JSON client with a deadline covering both headers and streamed body consumption. */
 export function createJsonClient(options = {}) {
     const transport = options.fetch ?? globalThis.fetch;
-    const timeoutMs = options.timeoutMs ?? 15_000;
-    const maxBytes = options.maxBytes ?? 4 * 1024 * 1024;
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < 1) {
-        throw new UpdaterError('error.requestLimits');
-    }
+    const readLimit = (setting, fallback) => typeof setting === 'function' ? setting() : setting ?? fallback;
+    const limits = () => {
+        const timeoutMs = readLimit(options.timeoutMs, 15_000);
+        const maxBytes = readLimit(options.maxBytes, 4 * 1024 * 1024);
+        if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+            throw new UpdaterError('error.requestLimits');
+        }
+        return { timeoutMs, maxBytes };
+    };
+    limits();
     return {
         async get(raw, signal) {
+            const { timeoutMs, maxBytes } = limits();
             let url;
             try {
                 url = new URL(raw);

@@ -19,6 +19,24 @@ test('npm uses SemVer, exact targets and the selected registry', async () => {
   assert.equal((await providers.npm.check(bundle, npm, client(npmData('2.0.0-beta.1')))).status, 'unsupported');
 });
 
+test('pinned npm versions report newer, current and unknown baselines without becoming actionable', async () => {
+  const source = { ...npm, pinned: true };
+  const newer = await providers.npm.check(bundle, source, client(npmData('2.0.0')));
+  assert.equal(newer.status, 'pinned');
+  assert.equal(newer.detail.key, 'msg.npmPinnedUpdate');
+  assert.equal(newer.detail.params.name, 'plugin');
+  assert.equal(newer.candidate.version, '2.0.0');
+  for (const offered of ['1.0.0', '0.9.0']) {
+    const current = await providers.npm.check(bundle, source, client(npmData(offered)));
+    assert.equal(current.status, 'current');
+    assert.equal(current.detail.key, 'msg.npmPinnedCurrent');
+    assert.equal(current.candidate.version, offered);
+  }
+  const unknown = await providers.npm.check({ ...bundle, version: 'dev' }, source, client(npmData('2.0.0')));
+  assert.equal(unknown.status, 'unknown');
+  assert.equal(unknown.detail.key, 'msg.versionUnknown');
+});
+
 test('npm rejects wrong package identity, missing bundle and malformed metadata', async () => {
   const wrong = npmData('2.0.0');
   wrong.versions['2.0.0'].name = 'other';

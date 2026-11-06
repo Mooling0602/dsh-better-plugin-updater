@@ -38,17 +38,6 @@ export declare const zh: {
     'ui.check.empty': string;
     'ui.check.summary': string;
     'ui.check.readOnly': string;
-    'ui.plan.title': string;
-    'ui.plan.unknownVersion': string;
-    'ui.plan.commit': string;
-    'ui.plan.selected': string;
-    'ui.plan.currentCommit': string;
-    'ui.plan.current': string;
-    'ui.plan.target': string;
-    'ui.plan.selection': string;
-    'ui.plan.expires': string;
-    'ui.plan.risks': string;
-    'ui.plan.confirm': string;
     'ui.stage.applied': string;
     'ui.stage.restart': string;
     'ui.stage.failed': string;
@@ -69,7 +58,6 @@ export declare const zh: {
     'ui.help.title': string;
     'ui.help.list': string;
     'ui.help.check': string;
-    'ui.help.plan': string;
     'ui.help.update': string;
     'ui.help.help': string;
     'ui.help.language': string;
@@ -79,6 +67,8 @@ export declare const zh: {
     'ui.error.title': string;
     'ui.error.help': string;
     'msg.versionPinned': string;
+    'msg.npmPinnedUpdate': string;
+    'msg.npmPinnedCurrent': string;
     'msg.versionUnknown': string;
     'msg.versionUpdate': string;
     'msg.versionCurrent': string;

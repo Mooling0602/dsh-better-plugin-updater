@@ -1,7 +1,7 @@
 /** Update checking and explicit, single-use plans over DSH's non-transactional management API. */
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { valid } from 'semver';
+import { gt, valid } from 'semver';
 import { errorDetail, UpdaterError } from './errors.js';
 import { message, t } from './i18n.js';
 import type { Message } from './i18n.js';
@@ -15,7 +15,8 @@ export interface UpdaterOptions {
   readonly providers: readonly UpdateProvider[];
   readonly overrides?: Readonly<Record<string, SourceOverride>>;
   readonly currentRevision?: (bundle: InstalledBundle) => Promise<string | undefined>;
-  readonly planTtlMs?: number;
+  /** A fixed lifetime, or a reader evaluated per plan so a saved setting applies at once. */
+  readonly planTtlMs?: number | (() => number);
   readonly now?: () => number;
 }
 function freeze<T>(value: T): T {
@@ -43,6 +44,19 @@ function failureMessage(error: unknown): { message: string; detail?: Message } {
   return { message: error instanceof Error ? error.message : t('en', 'error.generic'), ...(detail ? { detail } : {}) };
 }
 
+/** Decide whether a checked target may enter an update confirmation. */
+export function isActionable(result: CheckResult | undefined, allowPinned = false): boolean {
+  if (!result?.candidate) return false;
+  if (result.status === 'update-available') return result.source.kind !== 'unsupported' && !result.source.pinned;
+  const source = result.source;
+  const candidate = result.candidate;
+  return allowPinned && result.status === 'pinned' && source.kind === 'npm' && source.pinned
+    && result.detail?.key === 'msg.npmPinnedUpdate' && source.packageName === result.bundle.name
+    && candidate.registry === source.registry && candidate.version !== undefined && valid(candidate.version) !== null
+    && result.bundle.version !== undefined && valid(result.bundle.version) !== null
+    && gt(candidate.version, result.bundle.version) && candidate.spec === `${source.packageName}@${candidate.version}`;
+}
+
 /** A profile-local coordinator. Construction does no I/O; checks never perform package writes. */
 export class Updater {
   private readonly plans = new Map<string, UpdatePlan>();
@@ -50,12 +64,19 @@ export class Updater {
   private readonly active = new Set<Promise<unknown>>();
   private applying = false;
   private readonly now: () => number;
-  private readonly ttl: number;
+  private readonly ttl: number | (() => number);
 
   constructor(private readonly options: UpdaterOptions) {
     this.now = options.now ?? Date.now;
     this.ttl = options.planTtlMs ?? 10 * 60_000;
-    if (!Number.isSafeInteger(this.ttl) || this.ttl < 1) throw new UpdaterError('error.ttl');
+    this.ttlMs();
+  }
+
+  /** Read the plan lifetime, so a saved setting applies to the next plan without a reload. */
+  private ttlMs(): number {
+    const ttl = typeof this.ttl === 'function' ? this.ttl() : this.ttl;
+    if (!Number.isSafeInteger(ttl) || ttl < 1) throw new UpdaterError('error.ttl');
+    return ttl;
   }
 
   /** Read only the public bundle facts, without UI metadata or unrelated profile data. */
@@ -123,15 +144,9 @@ export class Updater {
     return results;
   }
 
-  /** Freeze an exact target for ten minutes by default; no package is removed or installed. */
-  async plan(name: string, signal?: AbortSignal): Promise<UpdatePlan> {
-    const [result] = await this.check(name, signal);
-    return this.prepare(result);
-  }
-
-  /** Freeze a previously checked result without fetching a potentially different target. */
-  prepare(result: CheckResult | undefined): UpdatePlan {
-    if (result?.status !== 'update-available' || !result.candidate) {
+  /** Freeze a checked target, with optional one-time authorization for a pinned npm package. */
+  prepare(result: CheckResult | undefined, allowPinned = false): UpdatePlan {
+    if (!isActionable(result, allowPinned) || !result?.candidate) {
       if (result?.detail) throw new UpdaterError(result.detail.key, result.detail.params);
       if (result) throw new Error(result.message);
       throw new UpdaterError('error.noUpdate');
@@ -145,7 +160,7 @@ export class Updater {
       : result.source.kind === 'npm' ? { key: 'warning.npmPin', params: { name: result.bundle.name } } : { key: 'warning.release' };
     const warningDetails: Message[] = [{ key: 'warning.nonAtomic' }, { key: 'warning.recovery' }, { key: 'warning.permissions' }, trackingWarning];
     const plan = freeze(structuredClone({ id, createdAt: new Date(created).toISOString(),
-      expiresAt: new Date(created + this.ttl).toISOString(), command: `/plugin-updater update ${result.bundle.name}`,
+      expiresAt: new Date(created + this.ttlMs()).toISOString(), command: `/plugin-updater update ${result.bundle.name}${result.status === 'pinned' ? ' --allow-pinned' : ''}`,
       bundle: result.bundle, source: result.source, candidate: result.candidate,
       warnings: warningDetails.map(detail => t('en', detail.key, detail.params)), warningDetails } satisfies UpdatePlan));
     this.abort.signal.throwIfAborted();
@@ -164,14 +179,6 @@ export class Updater {
     return this.track(this.applyInternal(plan).finally(() => { this.applying = false; }));
   }
 
-  /** Execute an already-authorized durable target, revalidating its installed baseline. */
-  applyDeferred(plan: UpdatePlan): Promise<ApplyResult> {
-    this.abort.signal.throwIfAborted();
-    if (this.applying) throw new UpdaterError('error.busy');
-    this.applying = true;
-    return this.track(this.applyInternal(plan).finally(() => { this.applying = false; }));
-  }
-
   private async applyInternal(plan: UpdatePlan): Promise<ApplyResult> {
     const current = (await this.list()).find(bundle => bundle.name === plan.bundle.name);
     if (!current || skipReason(current) || !isDeepStrictEqual(fingerprint(current), fingerprint(plan.bundle))
@@ -183,7 +190,7 @@ export class Updater {
     const recovery = this.recovery(plan);
     try {
       removal = await this.options.manager.removeBundle(current.name);
-      if (removal.application !== 'applied' && removal.error?.code !== 'stop-profile') {
+      if (removal.application !== 'applied' && removal.application !== 'restart-required' && removal.error?.code !== 'stop-profile') {
         return { status: 'failed', ...message('msg.removalFailed'), removal,
           ...await this.observe(current.name), ...(recovery ? { recovery } : {}) };
       }
@@ -202,7 +209,8 @@ export class Updater {
         const source = await this.source(remaining);
         matches = source.kind === 'github-source' && source.currentRevision === plan.candidate.revision;
       }
-      return { status: matches ? installation.application === 'restart-required' ? 'restart-required' : 'updated' : 'failed',
+      const needsRestart = removal.application === 'restart-required' || installation.application === 'restart-required';
+      return { status: matches ? needsRestart ? 'restart-required' : 'updated' : 'failed',
         ...message(matches ? 'msg.installed' : 'msg.unexpectedState'),
         removal, installation, ...observed, ...(recovery ? { recovery } : {}) };
     } catch (error) {

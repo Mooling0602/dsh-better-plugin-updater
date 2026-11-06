@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "插件更新助手",
-    "description": "手动检查 npm 与 GitHub 插件包，审阅明确的更新计划后再执行更新。"
+    "description": "手动检查 npm 与 GitHub 插件包，审阅确切目标后再执行更新。"
   }
 }

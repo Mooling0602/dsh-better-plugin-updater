@@ -8,28 +8,58 @@ importers:
 
   .:
     dependencies:
+      '@deepseek-ai/cosmokit':
+        specifier: ^1.8.6
+        version: 1.8.6
+      '@deepseek-ai/schemastery':
+        specifier: ^3.18.5
+        version: 3.18.5
       semver:
         specifier: ^7.7.3
         version: 7.8.5
       yaml:
         specifier: ^2.9.0
         version: 2.9.1
-      zod:
-        specifier: ^4.4.3
-        version: 4.6.7
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: ~4.0.5
         version: 4.0.5
+      '@deepseek-ai/dsh-client-locale':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-client-store':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-client-ui-plugin-manager':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
       '@types/semver':
         specifier: ^7.7.1
         version: 7.8.0
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -50,6 +80,59 @@ packages:
 
   '@deepseek-ai/cosmokit@1.8.6':
     resolution: {integrity: sha512-ZSD/fN52L498LBIOYwjIOlaLv5veY6ZEwI2yzvZUKQtctn0QAPqu8tKdJ+OF5+Tv6NBq1U+wJWH+QI6OGy5EvQ==}
+
+  '@deepseek-ai/dsh-brand@0.2.1-rc.4':
+    resolution: {integrity: sha512-j/NLVa6lfUMym+5mEVrCisRqSQG6IsRlaYV9VuDKJawJ9+697F/BaZztPkuHd9iY/6SVa3PvIq7zhyoOBTaPEA==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/dsh-client-locale@0.2.1-rc.4':
+    resolution: {integrity: sha512-+bHlD1KskbmBdzhtDqFxFMzgiJe4Ymb2j+j7m0FHiYk6+mVANUwq1Q72d4+5dIz/EBV21WGKwKo3ydUkiaEdxg==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/dsh-client-store@0.2.1-rc.4':
+    resolution: {integrity: sha512-4pyNXUq8/5c7swTrgA69XEKguV5U6ooVFpiNPUIFHHcW0T8egf6fi8ex9Mp+opnTjq8Bkwvme8iMHENxo3v6Hg==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/dsh-client-ui-plugin-manager@0.2.1-rc.4':
+    resolution: {integrity: sha512-6V5FDMrPtUF+yuUVyFWlCB4zGG7k4lBwbwKD6cxZP+3eemvh6HEiWzq4HYNWUTXxSw9OrHvCemjfINiTdBubVg==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/dsh-client-ui-primitives@0.2.1-rc.4':
+    resolution: {integrity: sha512-NrZwWPERVCohOmP/GgYnDY6IzH7KB2y0EaQe+on39oJNy+zKSYCUrmk5cblq2Cp7DUM7Hb3lQHYtSow6Y8U+BQ==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/dsh-client-ui-renderer@0.2.1-rc.4':
+    resolution: {integrity: sha512-KTCjcA2Wh5rQ5u+6wwFo3zS7dpQ4y7LZMf7yfU3HqqTzNnoeTtO9TiwqEKbqCNk+qDLvxnPG2S28PLZQ0s2vhw==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/dsh-client-ui-settings@0.2.1-rc.4':
+    resolution: {integrity: sha512-n+geOn7DwWeGrxDFCp4on9tlJkLmGho+vKVx/0iNOxaAvp+zIb8wDvp6B1A7ugcqoQbEFy9IWQNuOcd3yWaEbA==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/dsh-client-ui-slots@0.2.1-rc.4':
+    resolution: {integrity: sha512-0ESZvB9Pr9sCjs381M51w+Hos+H7In9seT4Tg/YRc/fZOo/Td4Ez42XGV7n4vN5pEHR6SXATHULgVtPIoxltNA==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/dsh-timeout@0.2.1-rc.4':
+    resolution: {integrity: sha512-8NQcrgG/3dscm4BVPYRhWl8zQdzR1Okl/awn2rFQwrbaht8FbUU83oYYvt2FhSY51wzJxbAADw2CKgy7w+iK0Q==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/dsh-typert-protocol@0.2.1-rc.4':
+    resolution: {integrity: sha512-JYsPbakzRF/SpqEQsZpzgJ8peM4EI3nipfO/W1wMdLVZ9HCTtLogqW8Y6LH9Jp7sHnYNMECOpGW/tCQSW8UoSQ==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/schemastery@3.18.5':
+    resolution: {integrity: sha512-Mnobvqf9rHsZYv4g5edj5ddxS1oF1kIdSlz0DunUgnY3LWG5F26MqvH3YOOsSaodCgyzJ16OMN9O99/s5Crtdw==}
 
   '@esbuild/aix-ppc64@0.28.2':
     resolution: {integrity: sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==}
@@ -213,13 +296,23 @@ packages:
   '@types/node@24.19.2':
     resolution: {integrity: sha512-93d49wCWJkCyN87MxLpNN6KXPCwFw7bVUg79mGUV1OS40JGWwVCr8n61DXCSqz7CV6/VfPkb7xec7uP2M+QHWQ==}
 
+  '@types/react@19.3.0':
+    resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
+
   '@types/semver@7.8.0':
     resolution: {integrity: sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ==}
+
+  csstype@3.2.3:
+    resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
   esbuild@0.28.2:
     resolution: {integrity: sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==}
     engines: {node: '>=18'}
     hasBin: true
+
+  react@19.3.1:
+    resolution: {integrity: sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==}
+    engines: {node: '>=0.10.0'}
 
   semver@7.8.5:
     resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
@@ -239,6 +332,9 @@ packages:
     engines: {node: '>= 14.6'}
     hasBin: true
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
@@ -250,6 +346,59 @@ snapshots:
       '@standard-schema/spec': 1.1.0
 
   '@deepseek-ai/cosmokit@1.8.6': {}
+
+  '@deepseek-ai/dsh-brand@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+
+  '@deepseek-ai/dsh-client-locale@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+      '@deepseek-ai/schemastery': 3.18.5
+
+  '@deepseek-ai/dsh-client-store@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+
+  '@deepseek-ai/dsh-client-ui-plugin-manager@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+      '@deepseek-ai/dsh-timeout': 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-typert-protocol': 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/schemastery': 3.18.5
+      zod: 4.4.3
+
+  '@deepseek-ai/dsh-client-ui-primitives@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+
+  '@deepseek-ai/dsh-client-ui-renderer@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+
+  '@deepseek-ai/dsh-client-ui-settings@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+      '@deepseek-ai/schemastery': 3.18.5
+
+  '@deepseek-ai/dsh-client-ui-slots@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+
+  '@deepseek-ai/dsh-timeout@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+
+  '@deepseek-ai/dsh-typert-protocol@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+      '@deepseek-ai/dsh-brand': 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      zod: 4.6.7
+
+  '@deepseek-ai/schemastery@3.18.5':
+    dependencies:
+      '@deepseek-ai/cosmokit': 1.8.6
+      '@standard-schema/spec': 1.1.0
 
   '@esbuild/aix-ppc64@0.28.2':
     optional: true
@@ -335,7 +484,13 @@ snapshots:
     dependencies:
       undici-types: 7.24.6
 
+  '@types/react@19.3.0':
+    dependencies:
+      csstype: 3.2.3
+
   '@types/semver@7.8.0': {}
+
+  csstype@3.2.3: {}
 
   esbuild@0.28.2:
     optionalDependencies:
@@ -366,6 +521,8 @@ snapshots:
       '@esbuild/win32-ia32': 0.28.2
       '@esbuild/win32-x64': 0.28.2
 
+  react@19.3.1: {}
+
   semver@7.8.5: {}
 
   typescript@6.0.3: {}
@@ -373,5 +530,7 @@ snapshots:
   undici-types@7.24.6: {}
 
   yaml@2.9.1: {}
+
+  zod@4.4.3: {}
 
   zod@4.6.7: {}

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { Context } from '@deepseek-ai/cordis';
 import * as client from '../dist/client/index.js';
+import { en as pageEn, formLabels, zh as pageZh } from '../dist/client/locales.js';
 import { normalizeLanguage } from '../dist/language.js';
 import { createUpdaterCommand } from '../dist/commands.js';
 import { resolveLanguage } from '../dist/i18n.js';
@@ -25,7 +26,7 @@ function remote(handler) {
 function host(choice = 'auto', preference = 'en') {
   const writes = [];
   const updater = {
-    async list() { return []; }, async check() { return []; }, async plan() { throw new Error('No plan'); },
+    async list() { return []; }, async check() { return []; },
     async apply(...args) { writes.push(args); return { status: 'failed', message: 'Fixture failure.' }; },
   };
   const settings = { describe() { return [{ ns: 'locale', value: { preference } }]; } };
@@ -177,4 +178,19 @@ test('packaged browser factory is self-contained and declares a discoverable Cli
   for (const hook of ['prepare', 'prepack', 'preinstall', 'install', 'postinstall']) {
     assert.equal(pkg.scripts[hook], undefined, `${hook} must not trigger an install-time build`);
   }
+});
+
+test('settings page dictionaries cover the same keys and every one has copy', () => {
+  assert.deepEqual(Object.keys(pageZh).sort(), Object.keys(pageEn).sort());
+  for (const key of Object.keys(pageEn)) {
+    assert.ok(pageEn[key].length > 0, `${key} is blank in English`);
+    assert.ok(pageZh[key].length > 0, `${key} is blank in Chinese`);
+  }
+  // The page label the maintainer asked for, so a future rename cannot drift back silently.
+  assert.equal(pageZh.language, '插件语言');
+  assert.equal(pageEn.language, 'Plugin language');
+  // The frame copy must come from the dictionary rather than a second hardcoded set.
+  const labels = formLabels(key => pageZh[key]);
+  assert.equal(labels.save, pageZh.save);
+  assert.equal(labels.unavailable, pageZh.unavailable);
 });

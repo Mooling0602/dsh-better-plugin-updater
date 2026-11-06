@@ -19,4 +19,4 @@ export interface UpdaterTool {
     }): Promise<string>;
 }
 /** Build a read-only tool without registering resources, fetching metadata, or executing updates. */
-export declare function createUpdaterTool(updater: Pick<Updater, 'list' | 'check' | 'plan'>): UpdaterTool;
+export declare function createUpdaterTool(updater: Pick<Updater, 'list' | 'check'>): UpdaterTool;

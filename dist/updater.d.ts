@@ -6,9 +6,12 @@ export interface UpdaterOptions {
     readonly providers: readonly UpdateProvider[];
     readonly overrides?: Readonly<Record<string, SourceOverride>>;
     readonly currentRevision?: (bundle: InstalledBundle) => Promise<string | undefined>;
-    readonly planTtlMs?: number;
+    /** A fixed lifetime, or a reader evaluated per plan so a saved setting applies at once. */
+    readonly planTtlMs?: number | (() => number);
     readonly now?: () => number;
 }
+/** Decide whether a checked target may enter an update confirmation. */
+export declare function isActionable(result: CheckResult | undefined, allowPinned?: boolean): boolean;
 /** A profile-local coordinator. Construction does no I/O; checks never perform package writes. */
 export declare class Updater {
     private readonly options;
@@ -19,20 +22,18 @@ export declare class Updater {
     private readonly now;
     private readonly ttl;
     constructor(options: UpdaterOptions);
+    /** Read the plan lifetime, so a saved setting applies to the next plan without a reload. */
+    private ttlMs;
     /** Read only the public bundle facts, without UI metadata or unrelated profile data. */
     list(): Promise<InstalledBundle[]>;
     /** Check one or all bundles sequentially, bounding traffic and isolating per-package failures. */
     check(name?: string, signal?: AbortSignal): Promise<CheckResult[]>;
     private source;
     private checkInternal;
-    /** Freeze an exact target for ten minutes by default; no package is removed or installed. */
-    plan(name: string, signal?: AbortSignal): Promise<UpdatePlan>;
-    /** Freeze a previously checked result without fetching a potentially different target. */
-    prepare(result: CheckResult | undefined): UpdatePlan;
+    /** Freeze a checked target, with optional one-time authorization for a pinned npm package. */
+    prepare(result: CheckResult | undefined, allowPinned?: boolean): UpdatePlan;
     /** Execute one saved plan only after explicit acknowledgement; never approve dependency scripts or compatibility exemptions. */
     apply(id: string, acceptRemovalRisk: boolean): Promise<ApplyResult>;
-    /** Execute an already-authorized durable target, revalidating its installed baseline. */
-    applyDeferred(plan: UpdatePlan): Promise<ApplyResult>;
     private applyInternal;
     private recovery;
     private observe;

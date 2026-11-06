@@ -41,7 +41,13 @@ const npm: UpdateProvider = {
     const manifest = object(object(metadata.versions)[version]);
     if (manifest.name !== source.packageName || manifest.version !== version) throw new UpdaterError('error.registryManifest');
     if (!object(manifest.dsh).bundle) throw new UpdaterError('error.registryBundle');
-    return compare(bundle, { spec: `${source.packageName}@${version}`, version, registry: source.registry }, source.pinned);
+    const compared = compare(bundle, { spec: `${source.packageName}@${version}`, version, registry: source.registry }, false);
+    if (!source.pinned) return compared;
+    if (compared.status === 'update-available') {
+      return { ...compared, status: 'pinned', ...message('msg.npmPinnedUpdate', { name: source.packageName }) };
+    }
+    if (compared.status === 'current') return { ...compared, ...message('msg.npmPinnedCurrent') };
+    return compared;
   },
 };
 const githubSource: UpdateProvider = {

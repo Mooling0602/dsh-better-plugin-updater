@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Updater, createProviders } from '../dist/core.js';
+import { createUpdaterCommand } from '../dist/commands.js';
 
 function fixture(options = {}) {
   let bundles = [{ name: 'plugin', version: '1.0.0', source: 'plugin@^1.0.0', enabled: false, installed: true, removable: true, availability: 'profile' }];
@@ -20,10 +21,14 @@ function fixture(options = {}) {
   return { updater, manager, provider, calls, get bundles() { return bundles; }, set bundles(value) { bundles = value; } };
 }
 
-test('checking and planning are read-only; plans freeze exact targets', async () => {
+async function prepare(updater, name) {
+  return updater.prepare((await updater.check(name))[0]);
+}
+
+test('checking and preparation are read-only; confirmations freeze exact targets', async () => {
   const f = fixture();
   assert.equal((await f.updater.check())[0].status, 'update-available');
-  const plan = await f.updater.plan('plugin');
+  const plan = await prepare(f.updater, 'plugin');
   assert.deepEqual(f.calls, []);
   assert.equal(Object.isFrozen(plan), true);
   assert.equal(Object.isFrozen(plan.candidate), true);
@@ -37,7 +42,7 @@ test('checking and planning are read-only; plans freeze exact targets', async ()
 
 test('explicit acknowledgement is mandatory and plans are single use', async () => {
   const f = fixture();
-  const plan = await f.updater.plan('plugin');
+  const plan = await prepare(f.updater, 'plugin');
   assert.throws(() => f.updater.apply(plan.id, false), /acceptance/);
   assert.deepEqual(f.calls, []);
   const result = await f.updater.apply(plan.id, true);
@@ -53,15 +58,126 @@ test('explicit acknowledgement is mandatory and plans are single use', async () 
 test('expiry, package changes, and registry changes invalidate a plan before writes', async () => {
   let now = 1000;
   const f = fixture({ now: () => now, planTtlMs: 100 });
-  const expired = await f.updater.plan('plugin'); now += 101;
+  const expired = await prepare(f.updater, 'plugin'); now += 101;
   assert.throws(() => f.updater.apply(expired.id, true), /expired/);
-  const stale = await f.updater.plan('plugin');
+  const stale = await prepare(f.updater, 'plugin');
   f.bundles = [{ ...f.bundles[0], enabled: true }];
   await assert.rejects(f.updater.apply(stale.id, true), /stale/);
-  const changed = await f.updater.plan('plugin');
+  const changed = await prepare(f.updater, 'plugin');
   f.manager.registries = async () => ({ registry: 'https://private.test/' });
   await assert.rejects(f.updater.apply(changed.id, true), /stale/);
   assert.deepEqual(f.calls, []);
+});
+
+test('pinned npm checks discover newer versions without authorizing removal', async () => {
+  const client = { async get() { return { name: 'plugin', 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name: 'plugin', version: '2.0.0', dsh: { bundle: {} } } } }; } };
+  const f = fixture({ providers: createProviders(), client });
+  f.bundles = [{ ...f.bundles[0], source: 'plugin@1.0.0' }];
+  const [result] = await f.updater.check('plugin');
+  assert.equal(result.source.pinned, true);
+  assert.equal(result.status, 'pinned');
+  assert.equal(result.candidate.version, '2.0.0');
+  assert.throws(() => f.updater.prepare(result));
+  const attempt = await createUpdaterCommand(f.updater).handler({ rawInput: 'update plugin --accept-removal-risk' });
+  assert.equal(attempt.kind, 'error');
+  assert.match(attempt.text, /newer version is available/i);
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+
+  const allowed = fixture({ providers: createProviders(), client, overrides: { plugin: { kind: 'npm', allowPinned: true } } });
+  allowed.bundles = [{ ...allowed.bundles[0], source: 'plugin@1.0.0' }];
+  const [actionable] = await allowed.updater.check('plugin');
+  assert.equal(actionable.status, 'update-available');
+  assert.equal(actionable.source.pinned, false);
+  assert.equal(allowed.updater.prepare(actionable).candidate.spec, 'plugin@2.0.0');
+  assert.deepEqual(allowed.calls, []);
+  await allowed.updater.dispose();
+});
+
+test('one-time authorization rejects inconsistent pinned npm targets', async () => {
+  const client = { async get() { return { name: 'plugin', 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name: 'plugin', version: '2.0.0', dsh: { bundle: {} } } } }; } };
+  const f = fixture({ providers: createProviders(), client });
+  f.bundles = [{ ...f.bundles[0], source: 'plugin@1.0.0' }];
+  const [result] = await f.updater.check('plugin');
+  for (const invalid of [
+    { ...result, bundle: { ...result.bundle, version: 'unknown' } },
+    { ...result, candidate: { ...result.candidate, version: '0.9.0', spec: 'plugin@0.9.0' } },
+    { ...result, candidate: { ...result.candidate, spec: 'other@2.0.0' } },
+    { ...result, candidate: { ...result.candidate, registry: 'https://other.test/' } },
+    { ...result, detail: { key: 'msg.gitPinned' } },
+  ]) assert.throws(() => f.updater.prepare(invalid, true));
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('one-time pinned npm authorization requires confirmation and does not persist', async () => {
+  let latest = '2.0.0';
+  const client = { async get() { return { name: 'plugin', 'dist-tags': { latest }, versions: { [latest]: { name: 'plugin', version: latest, dsh: { bundle: {} } } } }; } };
+  const f = fixture({ providers: createProviders(), client });
+  f.bundles = [{ ...f.bundles[0], source: 'plugin@1.0.0' }];
+  const command = createUpdaterCommand(f.updater);
+  const owner = {}, other = {};
+  const preview = await command.handler({ rawInput: 'update plugin --allow-pinned', agent: owner });
+  assert.equal(preview.kind, 'success');
+  assert.match(preview.text, /plugin@2\.0\.0/);
+  assert.match(preview.text, /this update only/);
+  assert.deepEqual(f.calls, []);
+  assert.equal((await command.handler({ rawInput: 'ok', agent: other })).kind, 'error');
+  assert.equal((await command.handler({ rawInput: 'ok', agent: owner })).kind, 'success');
+  assert.deepEqual(f.calls.map(call => call[0]), ['remove', 'install']);
+  assert.equal(f.calls[1][2].saveExact, true);
+  assert.equal(f.bundles[0].source, 'plugin@2.0.0');
+  latest = '3.0.0';
+  const next = await command.handler({ rawInput: 'update plugin', agent: owner });
+  assert.equal(next.kind, 'error');
+  assert.match(next.text, /--allow-pinned/);
+  assert.deepEqual(f.calls.map(call => call[0]), ['remove', 'install']);
+  await f.updater.dispose();
+});
+
+test('pinned authorization is scoped to the current target and cannot skip confirmation', async () => {
+  let latest = '2.0.0';
+  const client = { async get() { return { name: 'plugin', 'dist-tags': { latest }, versions: { [latest]: { name: 'plugin', version: latest, dsh: { bundle: {} } } } }; } };
+  const f = fixture({ providers: createProviders(), client });
+  f.bundles = [{ ...f.bundles[0], source: 'plugin@1.0.0' }];
+  const command = createUpdaterCommand(f.updater);
+  const owner = {};
+  assert.equal((await command.handler({ rawInput: 'update plugin --allow-pinned --accept-removal-risk', agent: owner })).kind, 'error');
+  assert.equal((await command.handler({ rawInput: 'update plugin --allow-pinned --allow-pinned', agent: owner })).kind, 'error');
+  assert.equal((await command.handler({ rawInput: 'update plugin --allow-pinned', agent: owner })).kind, 'success');
+  latest = '3.0.0';
+  const changed = await command.handler({ rawInput: 'ok', agent: owner });
+  assert.equal(changed.kind, 'success');
+  assert.match(changed.text, /plugin@3\.0\.0/);
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('repeating a pinned update must retain its one-time authorization', async () => {
+  const client = { async get() { return { name: 'plugin', 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name: 'plugin', version: '2.0.0', dsh: { bundle: {} } } } }; } };
+  const f = fixture({ providers: createProviders(), client });
+  f.bundles = [{ ...f.bundles[0], source: 'plugin@1.0.0' }];
+  const command = createUpdaterCommand(f.updater);
+  assert.equal((await command.handler({ rawInput: 'update plugin --allow-pinned' })).kind, 'success');
+  assert.equal((await command.handler({ rawInput: 'update plugin' })).kind, 'error');
+  assert.equal((await command.handler({ rawInput: 'ok' })).kind, 'error');
+  assert.deepEqual(f.calls, []);
+  assert.equal((await command.handler({ rawInput: 'update plugin --allow-pinned' })).kind, 'success');
+  assert.equal((await command.handler({ rawInput: 'update plugin --allow-pinned' })).kind, 'success');
+  assert.deepEqual(f.calls.map(call => call[0]), ['remove', 'install']);
+  await f.updater.dispose();
+});
+
+test('one-time npm authorization does not authorize pinned Git sources', async () => {
+  const f = fixture({ providers: createProviders(), client: { async get() { return { sha: 'b'.repeat(40) }; } } });
+  f.bundles = [{ ...f.bundles[0], source: `github:owner/repo#${'a'.repeat(40)}` }];
+  const [result] = await f.updater.check('plugin');
+  assert.equal(result.status, 'pinned');
+  assert.equal(result.source.kind, 'github-source');
+  assert.throws(() => f.updater.prepare(result, true));
+  assert.equal((await createUpdaterCommand(f.updater).handler({ rawInput: 'update plugin --allow-pinned' })).kind, 'error');
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
 });
 
 test('protected, installation, official-target and self bundles are not checked', async () => {
@@ -76,24 +192,75 @@ test('protected, installation, official-target and self bundles are not checked'
   ];
   const results = await f.updater.check();
   assert.equal(results.every(result => result.status === 'skipped'), true);
-  await assert.rejects(f.updater.plan('official'));
+  await assert.rejects(prepare(f.updater, 'official'));
   await assert.rejects(f.updater.check('not-present'));
   assert.deepEqual(f.calls, []);
 });
 
-test('a failed removal never proceeds to installation', async () => {
-  const f = fixture();
-  const plan = await f.updater.plan('plugin');
-  f.manager.removeBundle = async () => ({ application: 'failed', error: { code: 'bundle-in-use' } });
-  const result = await f.updater.apply(plan.id, true);
-  assert.equal(result.status, 'failed');
-  assert.equal(result.installation, undefined);
-  assert.equal(result.remaining.version, '1.0.0');
+test('a failed, cancelled or overridden removal never proceeds to installation', async () => {
+  for (const application of ['failed', 'cancelled', 'overridden']) {
+    const f = fixture();
+    const plan = await prepare(f.updater, 'plugin');
+    f.manager.removeBundle = async () => ({ application, ...(application === 'failed' ? { error: { code: 'bundle-in-use' } } : {}) });
+    const result = await f.updater.apply(plan.id, true);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.installation, undefined);
+    assert.equal(result.remaining.version, '1.0.0');
+    assert.deepEqual(f.calls, []);
+    await f.updater.dispose();
+  }
+});
+
+test('removal requiring restart still installs the target and retains the restart requirement', async () => {
+  for (const installationState of ['applied', 'restart-required']) {
+    for (const enabled of [false, true]) {
+      const f = fixture();
+      f.bundles = [{ ...f.bundles[0], enabled }];
+      const plan = await prepare(f.updater, 'plugin');
+      const remove = f.manager.removeBundle;
+      f.manager.removeBundle = async (...args) => ({ ...await remove(...args), application: 'restart-required', changed: true, restartReason: 'module-comparison' });
+      const install = f.manager.installBundle;
+      f.manager.installBundle = async (...args) => ({ ...await install(...args), application: installationState });
+      const result = await f.updater.apply(plan.id, true);
+      assert.deepEqual(f.calls.map(call => call[0]), ['remove', 'install']);
+      assert.equal(f.calls[1][1], 'plugin@2.0.0');
+      assert.equal(f.calls[1][2].enabled, enabled);
+      assert.equal(result.status, 'restart-required');
+      assert.equal(result.removal.restartReason, 'module-comparison');
+      assert.equal(result.installation.application, installationState);
+      assert.equal(result.remaining.version, '2.0.0');
+      assert.equal(result.remaining.enabled, enabled);
+      await f.updater.dispose();
+    }
+  }
+});
+
+test('installation failure after removal requiring restart stays failed with recovery', async () => {
+  for (const behavior of ['failed', 'cancelled', 'throw', 'wrong-version']) {
+    const f = fixture();
+    const plan = await prepare(f.updater, 'plugin');
+    const remove = f.manager.removeBundle;
+    f.manager.removeBundle = async (...args) => ({ ...await remove(...args), application: 'restart-required', restartReason: 'module-comparison' });
+    f.manager.installBundle = async () => {
+      if (behavior === 'throw') throw new Error('Fixture installation failed.');
+      if (behavior === 'wrong-version') {
+        f.bundles = [{ name: 'plugin', source: 'plugin@3.0.0', version: '3.0.0', enabled: false, installed: true, removable: true, availability: 'profile' }];
+        return { application: 'applied' };
+      }
+      return { application: behavior };
+    };
+    const result = await f.updater.apply(plan.id, true);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.removal.restartReason, 'module-comparison');
+    assert.equal(result.recovery.spec, 'plugin@1.0.0');
+    assert.equal(result.remaining?.version, behavior === 'wrong-version' ? '3.0.0' : undefined);
+    await f.updater.dispose();
+  }
 });
 
 test('stop-profile follows the official install-over path and reports restart', async () => {
   const f = fixture();
-  const plan = await f.updater.plan('plugin');
+  const plan = await prepare(f.updater, 'plugin');
   f.manager.removeBundle = async () => ({ application: 'failed', error: { code: 'stop-profile' } });
   const install = f.manager.installBundle;
   f.manager.installBundle = async (...args) => ({ ...await install(...args), application: 'restart-required' });
@@ -105,7 +272,7 @@ test('stop-profile follows the official install-over path and reports restart', 
 test('failed, cancelled or throwing installation reports actual absence and manual recovery', async () => {
   for (const behavior of ['failed', 'cancelled', 'throw']) {
     const f = fixture();
-    const plan = await f.updater.plan('plugin');
+    const plan = await prepare(f.updater, 'plugin');
     f.manager.installBundle = async () => {
       if (behavior === 'throw') throw new Error('Fixture installation failed.');
       return { application: behavior, pendingBuilds: ['fixture-build'] };
@@ -120,7 +287,7 @@ test('failed, cancelled or throwing installation reports actual absence and manu
 
 test('a successful host answer with the wrong installed version is not reported as updated', async () => {
   const f = fixture();
-  const plan = await f.updater.plan('plugin');
+  const plan = await prepare(f.updater, 'plugin');
   f.manager.installBundle = async (_spec, settings) => {
     f.bundles = [{ name: 'plugin', source: 'plugin@3.0.0', version: '3.0.0', enabled: settings.enabled, installed: true, removable: true, availability: 'profile' }];
     return { application: 'applied' };
@@ -130,8 +297,8 @@ test('a successful host answer with the wrong installed version is not reported 
 
 test('a second update cannot run concurrently and disposal waits for recovery-critical install', async () => {
   const f = fixture();
-  const first = await f.updater.plan('plugin');
-  const second = await f.updater.plan('plugin');
+  const first = await prepare(f.updater, 'plugin');
+  const second = await prepare(f.updater, 'plugin');
   let release;
   let entered;
   const gate = new Promise(resolve => { release = resolve; });
@@ -157,7 +324,7 @@ test('Git updates verify the installed commit independently of the unchanged pac
   const f = fixture({ providers: createProviders(), client: { async get() { return { sha: next }; } }, currentRevision: async () => revision,
     overrides: { plugin: { kind: 'github-source', repository: 'owner/repo', ref: 'main' } } });
   f.bundles = [{ ...f.bundles[0], source: 'github:owner/repo#main' }];
-  const plan = await f.updater.plan('plugin');
+  const plan = await prepare(f.updater, 'plugin');
   assert.equal(plan.candidate.version, undefined);
   f.manager.installBundle = async (spec, settings) => {
     revision = next;
@@ -170,21 +337,11 @@ test('Git updates verify the installed commit independently of the unchanged pac
   assert.equal((await f.updater.check('plugin'))[0].status, 'current');
 });
 
-test('durable targets revalidate after expiry and tolerate serialized key ordering', async () => {
-  let now = 1000;
-  const f = fixture({ now: () => now, planTtlMs: 100 });
-  const plan = await f.updater.plan('plugin');
-  now += 10000;
-  const restored = structuredClone(plan);
-  restored.source = Object.fromEntries(Object.entries(restored.source).reverse());
-  assert.equal((await f.updater.applyDeferred(restored)).status, 'updated');
-});
-
 test('a changed Git baseline invalidates a plan before removing a package', async () => {
   let revision = 'b'.repeat(40);
   const f = fixture({ providers: createProviders(), client: { async get() { return { sha: 'a'.repeat(40) }; } }, currentRevision: async () => revision });
   f.bundles = [{ ...f.bundles[0], source: 'github:owner/repo#main' }];
-  const plan = await f.updater.plan('plugin');
+  const plan = await prepare(f.updater, 'plugin');
   revision = 'c'.repeat(40);
   await assert.rejects(f.updater.apply(plan.id, true), /stale/);
   assert.deepEqual(f.calls, []);
@@ -195,6 +352,6 @@ test('a failed provider is isolated from other checks and cannot create a plan',
   f.provider.check = async () => { throw new Error('Fixture error.'); };
   const result = await f.updater.check();
   assert.equal(result[0].status, 'error');
-  await assert.rejects(f.updater.plan('plugin'), /Fixture error/);
+  await assert.rejects(prepare(f.updater, 'plugin'), /Fixture error/);
   assert.deepEqual(f.calls, []);
 });

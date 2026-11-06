@@ -5,7 +5,7 @@ export { Config } from './config.js';
 export type { UpdaterConfig } from './config.js';
 declare module '@deepseek-ai/cordis' {
     interface Context {
-        /** Read-only checking and explicit plan execution for the current profile. Not a Remote service. */
+        /** Read-only checking and confirmed updates for the current profile. Not a Remote service. */
         betterPluginUpdater: Updater;
     }
 }

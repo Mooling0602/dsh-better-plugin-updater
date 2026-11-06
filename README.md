@@ -1,80 +1,97 @@
 # dsh-better-plugin-updater
 
-A TypeScript Cordis bundle for manually checking and updating third-party DeepSeek Harness plugin bundles. It uses DSH's existing plugin manager for package changes, rather than running a second package manager.
+**English** | [简体中文](README.zh.md)
 
-## Initial implementation
+Check for and install updates to your DeepSeek Harness plugins, without leaving DSH.
 
-- List the current profile's bundle inventory, including disabled bundles.
-- Check npm channels, GitHub repository refs, and exact GitHub release tarball attachments.
-- Confirm immediate batch updates or schedule exact targets for the next DSH startup.
-- Retain the bundle's enabled/disabled selection and report both management stages and the remaining package.
-- Offer read-only checks and plans to the agent through `plugin_updates` when the tools service is available.
+It uses DSH's own plugin manager to change packages, so an update goes through the same path as the plugin page. Nothing runs in the background and nothing restarts on its own: you ask for a check, you see the exact target, and you confirm.
 
-There are no automatic update checks or automatic restarts. Explicitly scheduled updates are attempted on the next DSH process startup. The bundle includes a Host coordinator and a small Web Client language bridge; buttons in the official plugin page are not implemented yet. Single-plugin and global custom indexes are reserved configuration interfaces; this version never fetches them.
+## Requirements
 
-## Build and use
+- Node.js 22 or later.
+- A managed DSH profile, in the Web app, the desktop app or the terminal.
 
-Requires Node.js 22 or later and a managed DSH profile with `pluginManager`, `profileContext`, and `commands`. The adapter is based on DSH `0.2.1-rc.4`. Installation and hot activation in a live Web profile, plus a read-only GitHub release check, have been verified. Real plugin upgrades and browser UI behavior remain unverified.
+## Install
 
 ```sh
-pnpm install --ignore-scripts
-pnpm build
-pnpm test
-pnpm pack
+dsh plugin --profile web add github:Mooling0602/dsh-better-plugin-updater
 ```
 
-The repository includes the compiled JavaScript and declarations in `dist/`, so Git-source installations do not need to build this package or install its development dependencies. The package also includes the bundle patch, English/Chinese display metadata, and an original SVG icon. After changing source, run `pnpm build` and commit the updated `dist/` files before publishing or packing. Other dependencies or profile policies may still require script approval. No live profile is installed or changed by the development tests.
+Replace `web` with the profile you use. Then refresh an already-open Web page so the browser half loads. This package ships prebuilt files, so the install runs no build step. Its own dependencies need no install scripts either, though a profile policy can still prompt for other packages.
 
-Slash commands display human-readable summaries, grouped check results, and clearly separated risks and confirmation instructions. The `plugin_updates` model tool retains its structured JSON output over the same coordinator. A bare command lists bundles; `help` shows usage without starting a check.
+To remove it:
 
-After installing the built bundle through DSH's normal bundle installer, use:
+```sh
+dsh plugin --profile web remove dsh-better-plugin-updater
+```
+
+If the update commands do not appear after a refresh, restart DSH once. DSH remembers that an installed package had no browser code, and an installation that was already running without the browser half keeps that cached answer until DSH starts again. A fresh installation does not hit this.
+
+## Use
 
 ```text
-/plugin-updater
-/plugin-updater help
-/plugin-updater list
-/plugin-updater check
-/plugin-updater check example-plugin
-/plugin-updater plan example-plugin
+/plugin-updater                   list installed plugin bundles
+/plugin-updater check             check every bundle for updates
+/plugin-updater check foo         check one bundle
+/plugin-updater update foo        show the exact target and confirm
+/plugin-updater ok                carry out the confirmed update
+/plugin-updater help              show usage
 ```
 
-Inventory is grouped into profile plugins, DSH-provided bundles, and missing or uninstalled entries. Checks put available updates and failures first, show version or compact commit comparisons, and retain reasons for skipped packages. Update results distinguish completion, required restart, partial failure, pending script approvals, and manual recovery.
+Updates are never applied until you confirm them. `/plugin-updater update foo bar` accepts several packages at once, and `*` or `?` match package names. Repeating the command, or sending `ok` or `confirm`, performs the update you were just shown.
 
-Immediate updates accept multiple exact package names and `*` / `?` package-name wildcards. `/plugin-updater update foo bar` checks and displays exact targets and risks; repeat the command, or use `/plugin-updater ok` or `/plugin-updater confirm`, to execute. Confirmation belongs to the calling agent, expires after ten minutes by default, and is renewed if the selection, installed state or target changes. `/plugin-updater update foo --accept-removal-risk` skips confirmation and immediately attempts the update. Unmatched patterns and per-package failures are reported.
+If you already know what you want and accept the risk described below:
 
-`/plugin-updater plan foo bar` schedules exact targets without executing immediately. `/plugin-updater plan` lists queued and completed results; `/plugin-updater plan cancel` removes all pending tasks without interrupting running work. A new pending target replaces an existing pending target for the same package. Tasks are persisted in the profile and attempted once when a new DSH process starts after their creating process has exited; reloading this plugin in the same process is not a restart. Startup uses the live plugin manager after plugin activation, so another restart may still be required. An interrupted task is retained as running for manual investigation and is never retried automatically. Queue lock files left by a crash require manual investigation and removal. Build-script approvals and compatibility checks are never bypassed. No package is downloaded in advance. The agent tool remains read-only; its plan action is a preview, not a scheduled task.
+```text
+/plugin-updater update foo --accept-removal-risk
+```
 
-## Languages
+### Choose a language
 
-Human-facing commands support English (`en`) and Simplified Chinese (`zh`). The Web Client entry reads the caller's actual `ctx.locale.getSnapshot().active` on every updater command, including a provisional UI language that was never saved. Selection order is explicit command `--lang`, explicit plugin `language: en | zh`, current caller UI language when `language: auto`, saved Host `locale.preference`, then English. Regional English/Chinese tags use their primary language. Unsupported or unavailable caller locales leave the Host fallback intact. Different Client trees do not share a last-language cache or overwrite global settings.
-
-The bridge uses DSH rc.4's existing string command wire: it adapts this Client's public `remote.commands.execute` accessor only for `/plugin-updater` and appends validated presentation metadata `--client-lang en|zh`. The Host consumes that metadata without changing command actions, targets, risk acceptance, attachments or cancellation. Unload restores the original accessor; captured adapters become inert. This is a version-sensitive compatibility adapter, not a new core protocol field or a global fetch patch. Refresh an already-open Web page after installation to load the new Client entry; merely rebuilding Host code does not activate a previously absent browser half. DSH also caches a package's lack of Client metadata: when first upgrading an already-running Host-only installation, one Host restart may be needed for discovery. Fresh installations do not have that stale negative cache. Native Apps that do not load Cordis Web Client modules need their own sender-side bridge; the native UI language is not guessed from Host OS settings.
-
-Set this plugin row's `language` configuration to `en` or `zh` to force a default, or override one command without changing any preference:
+Commands follow your interface language. To force one:
 
 ```text
 /plugin-updater --lang zh
-/plugin-updater check dsh-hint-shell --lang zh
-/plugin-updater help --lang en
+/plugin-updater check foo --lang zh
 ```
 
-A single `--lang en|zh` pair may appear before or after the action. Command keywords, package names, versions, URLs, plan ids, and `--accept-removal-risk` are never translated. Descriptions in the command picker use the language at registration; command results capture the current invocation language, including Client context. Third-party diagnostics remain in their original language.
+### Let the agent check for you
 
-The agent tool keeps English message text and stable JSON keys/status identifiers. Optional `detail` and `warningDetails` descriptors carry typed translation keys beside those fields; command rendering uses the keys rather than matching English diagnostic strings.
+The same checks are available to the agent as the read-only `plugin_updates` tool. It can list bundles and check for updates, but it cannot install updates, accept the removal risk, approve a build script or grant a compatibility exemption. Updates require your slash command.
 
-## Source policy
+## What it can check
 
-| Source | Behavior |
+| Where the plugin comes from | How an update is found |
 | --- | --- |
-| npm | Ask the effective current registry, or an explicit per-package registry. Use `latest` unless a channel is configured. Compare stable SemVer versions and do not propose downgrades. |
-| GitHub source | Resolve the tracked ref to a full commit SHA. Compare it with a matching root-importer pnpm lockfile entry or an explicitly recorded SHA. An unknown baseline is not an actionable update. |
-| GitHub release | Scan published releases and select the highest SemVer tag, including prereleases, regardless of GitHub's latest marker. Drafts and non-SemVer tags are ignored. Scan at most 1,000 releases; exceeding the limit reports an error rather than guessing. Choose one exact uploaded `.tgz` or `.tar.gz` attachment, inferred from the current attachment or explicitly configured. |
-| Local directory, unknown host or unsupported selector | Report unsupported without falling back to another source. |
-| Installation-provided, protected, broken, self, or official-target bundle | Skip. Official on-demand bundles retain DSH's built-in Update behavior. |
+| npm | The highest stable version in your registry. Downgrades are never proposed. |
+| A Git repository | The newest commit on the tracked branch, compared with the commit you installed. |
+| A GitHub release | The highest version tag, prereleases included. GitHub's "latest" marker is ignored. |
+| A local folder, or anything else | Reported as unsupported rather than guessed at. |
 
-Exact npm versions and SemVer-like Git tags/commit pins are protected by default. Updates deliberately save exact versions/commits. To keep offering subsequent updates, explicitly opt an npm package into pinned updates, or configure the Git ref to keep following. Other named Git refs are treated as tracking refs; arbitrary tag classification and Git SemVer/path selectors are not supported.
+Fixed npm versions are checked for newer versions but remain protected from updates. Use `/plugin-updater update foo --allow-pinned` to authorize one update and confirm it normally, or set `allowPinned` in the configuration for ongoing authorization. The one-time option cannot be combined with `--accept-removal-risk`, and the newly installed version remains pinned. Pinned Git commits remain protected; configure `allowPinned` or the Git ref to follow. See [configuration](#configuration).
 
-Configure this bundle's row through DSH's normal configuration mechanism. For example, the row configuration can contain:
+DSH's own bundles, protected packages and this plugin itself are skipped, and their update buttons keep working as before.
+
+## Risks
+
+**An update is not atomic.** The old package is removed before the new one is installed. If the install then fails, or the package needs a build script you have not approved, the package can be left missing. A recovery target is printed whenever one is known, but recovery is manual and there is no automatic rollback.
+
+This plugin never approves build scripts and never grants a compatibility exemption for you.
+
+## Configuration
+
+Most settings have a form in DSH's plugin settings page. Open the plugin's entry there, edit the fields and press Save, and the new value applies the next time the plugin uses it, without a restart. The form's labels follow your interface language. `sources` and `indexes` are set in the profile patch, because a nested per-package override is not a form field.
+
+Every field is optional.
+
+| Field | Default | Purpose |
+| --- | --- | --- |
+| `language` | `auto` | `auto`, `en` or `zh`. `auto` follows your interface language. |
+| `sources` | empty | Per-package overrides, described below. |
+| `githubTokenEnv` | `GITHUB_TOKEN` | The credential reference to resolve. Not a token value. |
+| `requestTimeoutMs` | `15000` | Deadline for one metadata request. |
+| `maxMetadataBytes` | `4194304` | Largest metadata response accepted, in bytes. |
+| `planTtlMs` | `600000` | How long a confirmation stays valid. |
 
 ```yaml
 sources:
@@ -93,52 +110,37 @@ sources:
     assetTemplate: plugin-{tag}.tgz
 ```
 
-Overrides must match the installed source kind and GitHub repository identity. They do not redirect a package to an unrelated repository. Release templates accept `{tag}` and `{version}` and match exactly one asset, not an arbitrary wildcard.
+An override must match the source the plugin was actually installed from. It cannot point a package at an unrelated repository.
 
-Registry checks use bounded HTTPS JSON requests, not `pnpm view`. They do not inherit npm's authentication or scoped registry configuration. Configure a per-package registry explicitly where needed; authenticated private npm registries are not supported yet. The original registry of an old installation cannot always be recovered, so the effective current registry is the fallback, not a claim about the original source.
+`index` sources and the global `indexes` list are reserved interfaces. This version accepts them and never fetches them.
 
-## GitHub API credentials
+## GitHub token
 
-GitHub metadata requests optionally resolve the `GITHUB_TOKEN` credential reference through DSH's official `ctx.credentials` service. The backward-compatible `githubTokenEnv` option selects a different reference name; it is not a token value. The local provider uses this precedence: saved credential references, inherited launch environment, project dotenv, then DSH-home dotenv. Thus a saved token takes priority over an environment variable with the same name.
-
-For the default local provider, merge a reference into the existing document rather than replacing its other references or records:
+GitHub allows far fewer anonymous requests. If checks fail with a rate limit, add a token once and the limit stops getting in the way:
 
 ```yaml
-# ~/.dsh/.credentials.yaml (or the credentials provider's configured path)
+# ~/.dsh/.credentials.yaml
 version: 1
 refs:
-  GITHUB_TOKEN: "<your GitHub API token>"
+  GITHUB_TOKEN: "<your GitHub token>"
 ```
 
-Leave the plugin configuration at its default, or use a custom reference in both places:
+Only that one reference is read, and only when a GitHub request needs it. The token is sent to `api.github.com` and nowhere else. It does not apply to the package download itself, which DSH and pnpm handle separately.
 
-```yaml
-# Plugin configuration: reference name only, never the secret itself
-githubTokenEnv: MY_GITHUB_TOKEN
-```
+To use a different reference name, change `githubTokenEnv` to match.
 
-Only the selected reference is resolved, anew for each GitHub API request; the plugin never enumerates credentials, reads other plugins' records, parses or writes the credential document, or copies its values into the environment. After the Host provider reloads a stored token change, the next request uses it without restarting this plugin or DSH. The provider owns the path, file validation, permissions and reload behavior. If no credentials service exists, only the selected process environment variable is used as a compatibility fallback; an available provider's absence or error is not bypassed with a second environment lookup.
+## Troubleshooting
 
-Credential lookup uses the request deadline and cancellation. Lookup errors or malformed bearer tokens produce a sanitized error without sending an HTTP request. No token value or provider exception text is returned by commands or tools. The resolved token is sent only to `https://api.github.com`, never to a registry or release-attachment host. It does not authorize the subsequent pnpm installation; DSH and its package manager still own installation credentials.
+**Checks fail with a rate limit.** Add a token, as described above. GitHub reports a suggested retry time when a limit is confirmed, but this plugin never retries on its own.
 
-## Request diagnostics
+**A check reports `unsupported`.** The package was installed from a local folder or another source this plugin cannot read. Reinstall it from npm, a Git repository or a release asset.
 
-Checks retain specific HTTP status codes, response-size violations, missing bodies, invalid UTF-8/JSON, timeouts, and caller cancellations instead of replacing them with one generic failure. Network/transport failures remain sanitized.
+**The package disappeared after a failed update.** Reinstall it using the recovery target printed in the update result. Recovery is manual by design.
 
-GitHub `403` responses are identified as rate limiting only when quota exhaustion (`X-RateLimit-Remaining: 0`) or a valid `Retry-After` header confirms it; other forbidden responses retain HTTP `403` without guessing the cause. HTTP `429` is reported as rate limiting on any metadata server. A valid `Retry-After` delay/date, or GitHub's exhausted-quota `X-RateLimit-Reset`, supplies the earliest suggested retry time as ISO 8601 UTC in both the message and `detail.params.retryAt`. Missing, malformed, or past hints do not invent a retry time. GitHub diagnostics also explain the optional token configuration for unauthenticated requests.
+**The update command is missing.** Refresh the Web page. If it is still missing, restart DSH once so the package metadata is read again.
 
-These hints do not trigger automatic retries, waits, or scheduled checks, and do not guarantee the next request will succeed. Error response bodies and raw header values are never echoed; diagnostics contain only known message text, the numeric HTTP status, and normalized retry timestamps. Slash commands localize these diagnostics; the tool retains English text and typed details.
-
-## Update risks and limits
-
-**Updating is not an atomic transaction.** The normal path removes the old bundle, then installs the planned target. If installation fails or needs unapproved build scripts, the old package may be absent. The result includes an exact recovery target when one is known, but recovery is manual. No compatibility exemption or new build-script permission is granted by this plugin.
-
-When DSH refuses removal with `stop-profile`, this adapter follows the official page's install-over path and reports any restart requirement. It does not restart DSH itself. Once removal starts, an update is awaited through installation even if the command caller disconnects, so cancellation does not deliberately leave a removed package unreinstalled.
-
-The executor rejects stale plans if the package, enabled state, source, effective registry, or known Git baseline changed. It serializes its own updates. Other DSH clients still have their own operations, and the public API provides no transaction spanning removal and installation. A failed activation is not reported as a successful update. Matching release metadata is not a cryptographic signature or a tarball checksum guarantee.
-
-See [the maintainer context](<CONTEXT.md>) for architecture and extension boundaries.
+See [the maintainer context](CONTEXT.md) for architecture, wire formats and extension boundaries.
 
 ## License
 
-MIT. The existing copyright and license are retained.
+MIT

@@ -1,6 +1,7 @@
-/** Human commands: batch selection, scoped confirmation and durable scheduled updates. */
+/** Human commands: batch selection and scoped confirmation. */
 import { formatApply, formatChecks, formatCommandError, formatInventory, formatUsage } from './format.js';
 import { t } from './i18n.js';
+import { isActionable } from './updater.js';
 /** Match package names only, not filesystem paths. */
 function patternExpression(pattern) {
     if (!/^[a-zA-Z0-9@._~/*?+-]+$/.test(pattern) || pattern.startsWith('-'))
@@ -98,57 +99,46 @@ export function createUpdaterCommand(updater, options = {}) {
                     return { kind: 'success', text: formatUsage(language) };
                 if (action === 'check' && args.length <= 1)
                     return { kind: 'success', text: formatChecks(await updater.check(args[0], signal), language) };
-                if (!['update', 'ok', 'confirm', 'plan'].includes(action))
+                if (!['update', 'ok', 'confirm'].includes(action))
                     return { kind: 'error', text: formatUsage(language) };
                 if (busy)
                     throw new Error(phrase(language, 'Another update operation is running.', '另一个更新操作正在进行。'));
                 busy = true;
                 try {
-                    if (action === 'plan') {
-                        if (!options.scheduled)
-                            throw new Error(phrase(language, 'Scheduled updates are unavailable.', '延迟更新不可用。'));
-                        if (!args.length) {
-                            const entries = await options.scheduled.list();
-                            return { kind: 'success', text: entries.length ? entries.map(e => `${e.plan.bundle.name}: ${e.plan.candidate.spec} [${e.state}]${e.outcome ? `\n${e.outcome}` : ''}`).join('\n') : phrase(language, 'No scheduled updates.', '没有延迟更新任务。') };
-                        }
-                        if (args.length === 1 && args[0] === 'cancel') {
-                            const count = await options.scheduled.cancel();
-                            return { kind: 'success', text: phrase(language, `Cancelled ${count} pending scheduled updates. Running updates were not interrupted.`, `已取消 ${count} 个待执行任务；正在执行的任务不会被中断。`) };
-                        }
-                        if (args.some(arg => arg.startsWith('--')))
-                            return { kind: 'error', text: formatUsage(language) };
-                        const { results, unmatched } = await inspect(args, signal);
-                        const plans = results.filter(r => r.status === 'update-available' && r.candidate).map(r => updater.prepare(r));
-                        await options.scheduled.schedule(plans);
-                        return { kind: plans.length ? 'success' : 'error', text: describe(results, unmatched, language) + '\n\n' + (plans.length ? exactTargets(plans, language) + '\n\n' : '') + phrase(language, `${plans.length} update(s) scheduled for the next DSH startup. Cancellation: /plugin-updater plan cancel. Updates are non-atomic; failures may require manual recovery.`, `已安排 ${plans.length} 个更新在下次 DSH 启动时尝试执行。取消：/plugin-updater plan cancel。更新非原子操作，失败可能需要人工恢复。`) };
-                    }
                     const confirming = action === 'ok' || action === 'confirm';
                     if (confirming && args.length)
                         return { kind: 'error', text: formatUsage(language) };
                     const accept = args.includes('--accept-removal-risk');
-                    if (args.filter(a => a === '--accept-removal-risk').length > 1 || args.some(a => a.startsWith('--') && a !== '--accept-removal-risk'))
+                    const explicitAllowPinned = args.includes('--allow-pinned');
+                    if (args.filter(a => a === '--accept-removal-risk').length > 1 || args.filter(a => a === '--allow-pinned').length > 1
+                        || args.some(a => a.startsWith('--') && a !== '--accept-removal-risk' && a !== '--allow-pinned'))
                         return { kind: 'error', text: formatUsage(language) };
+                    if (accept && explicitAllowPinned)
+                        return { kind: 'error', text: phrase(language, '--allow-pinned requires confirmation and cannot be combined with --accept-removal-risk.', '--allow-pinned 需要二次确认，不能与 --accept-removal-risk 同时使用。') };
                     const previous = pending.get(owner);
-                    const patterns = confirming ? previous?.patterns : args.filter(a => a !== '--accept-removal-risk');
+                    const allowPinned = confirming ? previous?.allowPinned ?? false : explicitAllowPinned;
+                    const patterns = confirming ? previous?.patterns : args.filter(a => a !== '--accept-removal-risk' && a !== '--allow-pinned');
                     if (!patterns?.length)
                         throw new Error(phrase(language, confirming ? 'No pending confirmation.' : 'Specify at least one package.', confirming ? '没有待确认的更新。' : '请至少指定一个插件包。'));
                     const { results, unmatched } = await inspect(patterns, signal);
                     const current = snapshot(results, unmatched);
-                    const available = results.filter(r => r.status === 'update-available' && r.candidate);
+                    const available = results.filter(result => isActionable(result, allowPinned));
                     if (!available.length) {
                         pending.delete(owner);
                         return { kind: 'error', text: describe(results, unmatched, language) };
                     }
-                    const same = previous && previous.expires > Date.now() && JSON.stringify(previous.patterns) === JSON.stringify(patterns) && previous.snapshot === current;
+                    const same = previous && previous.expires > Date.now() && previous.allowPinned === allowPinned
+                        && JSON.stringify(previous.patterns) === JSON.stringify(patterns) && previous.snapshot === current;
                     if (accept || (same && (confirming || action === 'update'))) {
                         pending.delete(owner);
-                        const plans = same && !accept ? previous.plans : available.map(r => updater.prepare(r));
+                        const plans = same && !accept ? previous.plans : available.map(r => updater.prepare(r, allowPinned));
                         const outcome = await execute(plans, language);
                         return { kind: outcome.kind, text: describe(results, unmatched, language) + '\n\n' + outcome.text };
                     }
-                    const plans = available.map(r => updater.prepare(r));
-                    pending.set(owner, { patterns: [...patterns], snapshot: current, plans, expires: Math.min(...plans.map(p => Date.parse(p.expiresAt))) });
-                    return { kind: 'success', text: describe(results, unmatched, language) + '\n\n' + exactTargets(plans, language) + '\n\n' + phrase(language, 'Update is non-atomic; the old package may be removed and manual recovery may be needed. Repeat the same update command or run /plugin-updater ok or /plugin-updater confirm to proceed.', '更新不是原子操作，旧插件可能被移除，失败时可能需要人工恢复。请再次执行相同的 update 命令，或执行 /plugin-updater ok 或 /plugin-updater confirm 以确认。') };
+                    const plans = available.map(r => updater.prepare(r, allowPinned));
+                    pending.set(owner, { patterns: [...patterns], allowPinned, snapshot: current, plans, expires: Math.min(...plans.map(p => Date.parse(p.expiresAt))) });
+                    const pinnedNotice = available.some(result => result.status === 'pinned') ? '\n\n' + phrase(language, 'Pinned npm packages are authorized for this update only; the installed target remains pinned.', '已固定的 npm 插件仅获准本次更新；安装后的目标仍会固定版本。') : '';
+                    return { kind: 'success', text: describe(results, unmatched, language) + '\n\n' + exactTargets(plans, language) + pinnedNotice + '\n\n' + phrase(language, 'Update is non-atomic; the old package may be removed and manual recovery may be needed. Repeat the same update command or run /plugin-updater ok or /plugin-updater confirm to proceed.', '更新不是原子操作，旧插件可能被移除，失败时可能需要人工恢复。请再次执行相同的 update 命令，或执行 /plugin-updater ok 或 /plugin-updater confirm 以确认。') };
                 }
                 finally {
                     busy = false;
