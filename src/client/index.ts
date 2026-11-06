@@ -117,11 +117,23 @@ export function mountSettingsPage(ctx: Context): void {
   }, 'dsh-better-plugin-updater: settings page'));
 }
 
+/** Mount the repository link independently of the bundle's settings form. */
+export function mountRepositoryLink(ctx: Context): void {
+  ctx.inject(['slots'], inner => inner.slots.inject('plugins.detail.actions', () => {
+    if (!hostRequire) return () => {};
+    const { RepositoryLink } = require('./repository-link.js') as { RepositoryLink: never };
+    return inner.slots.register({
+      name: 'plugins.detail.actions', id: `${BUNDLE_NAME}.github`, inject: () => ({ bundleName: BUNDLE_NAME }),
+    }, RepositoryLink);
+  }));
+}
+
 export function apply(ctx: Context): void {
   const commands = ctx.get('remote.commands') as object | undefined;
   const locale = ctx.get('locale') as ClientLocale | undefined;
   // The settings page is the primary surface, so a Host missing the command wire must not cost it.
   mountSettingsPage(ctx);
+  mountRepositoryLink(ctx);
   if (!commands || !locale) return;
   ctx.effect(() => installLanguageBridge(commands, () => locale.getSnapshot().active));
 }

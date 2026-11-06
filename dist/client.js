@@ -252,6 +252,26 @@ var init_settings_page = __esm({
   }
 });
 
+// src/client/repository-link.tsx
+var repository_link_exports = {};
+__export(repository_link_exports, {
+  RepositoryLink: () => RepositoryLink
+});
+function RepositoryLink({ subject, bundleName }) {
+  if (subject.kind !== "bundle" || subject.pkg.name !== bundleName) return null;
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives3.Button, { variant: "outline", size: "sm", onClick: () => {
+    window.open("https://github.com/Mooling0602/dsh-better-plugin-updater", "_blank", "noopener,noreferrer");
+  }, children: "GitHub" });
+}
+var import_dsh_client_ui_primitives3, import_jsx_runtime2;
+var init_repository_link = __esm({
+  "src/client/repository-link.tsx"() {
+    "use strict";
+    import_dsh_client_ui_primitives3 = require("@deepseek-ai/dsh-client-ui-primitives");
+    import_jsx_runtime2 = require("react/jsx-runtime");
+  }
+});
+
 // src/client/index.ts
 var index_exports = {};
 __export(index_exports, {
@@ -262,6 +282,7 @@ __export(index_exports, {
   captureHostRequire: () => captureHostRequire,
   inject: () => inject,
   installLanguageBridge: () => installLanguageBridge,
+  mountRepositoryLink: () => mountRepositoryLink,
   mountSettingsPage: () => mountSettingsPage,
   withClientLanguage: () => withClientLanguage
 });
@@ -347,10 +368,23 @@ function mountSettingsPage(ctx) {
     };
   }, "dsh-better-plugin-updater: settings page"));
 }
+function mountRepositoryLink(ctx) {
+  ctx.inject(["slots"], (inner) => inner.slots.inject("plugins.detail.actions", () => {
+    if (!hostRequire) return () => {
+    };
+    const { RepositoryLink: RepositoryLink2 } = (init_repository_link(), __toCommonJS(repository_link_exports));
+    return inner.slots.register({
+      name: "plugins.detail.actions",
+      id: `${BUNDLE_NAME}.github`,
+      inject: () => ({ bundleName: BUNDLE_NAME })
+    }, RepositoryLink2);
+  }));
+}
 function apply(ctx) {
   const commands = ctx.get("remote.commands");
   const locale = ctx.get("locale");
   mountSettingsPage(ctx);
+  mountRepositoryLink(ctx);
   if (!commands || !locale) return;
   ctx.effect(() => installLanguageBridge(commands, () => locale.getSnapshot().active));
 }

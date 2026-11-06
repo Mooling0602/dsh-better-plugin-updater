@@ -14,7 +14,8 @@ src/commands.ts         Human-facing slash command parsing and result kinds
 src/format.ts           Localized plain-text inventory, check and update presenters
 src/i18n.ts             Typed interpolation and per-call/saved language resolution
 src/language.ts         Small browser-safe supported-language vocabulary
-src/client/index.ts     Effect-scoped Web Client settings page mount, its locale namespace and the command-language bridge
+src/client/index.ts     Web Client slot mounts, settings locale namespace and command-language bridge
+src/client/repository-link.tsx Bundle detail repository link
 src/client/settings-controller.ts Settings form scope, field specs and page snapshot projection
 src/client/settings-page.tsx Settings page rendered from the shared settings primitives
 src/client/locales.ts   Client-side page dictionaries (English and Simplified Chinese)
@@ -61,11 +62,15 @@ The page lives in the `plugins.bundle.config` slot, keyed by this bundle's packa
 
 The page's copy lives in `src/client/locales.ts`, a second dictionary set separate from `src/locales/` because the Host renders command output and the Client renders the page. The keys are one union: the English object defines them and the Chinese object must supply all of them. Mounting registers the dictionaries through `ctx.locale.register(NS, { en, zh })`, where `NS` is `settings.updater` and is also merged into the slots package's `LocaleNamespaceMap`, and the slot registration carries `locale: NS`. The renderer then binds the namespace and passes `t` to the component as a prop, so the page never reaches for a global and a third-party front end that serves `locale` gets the same behaviour. A registration bumps the locale revision, which is why a dictionary registered after the page mounts still reaches an already-rendered page. The page must stay renderable when no `locale` service exists at all, so the dictionary registration is optional and the slot entry omits `locale` in that case; the copy then falls back to the English dictionary, matching what the renderer does for an unbound namespace.
 
-`inject` stays at the minimum: `locale` and `remote.commands`. Do not add `slots` or `configForms` to it. The settings page already waits for its own services through `ctx.inject`, and declaring them at the top level would turn a deployment without a plugin manager into a plugin that never loads at all, taking the command-language bridge down with it.
+The GitHub button registers separately through the `plugins.detail.actions` slot and waits for the slots service without requiring a served configuration form. The component renders only for the bundle subject whose package name matches `dsh-better-plugin-updater`, and opens the repository in a new tab with `noopener,noreferrer`. The slot lifecycle disposes its registration with the Client plugin.
+
+`inject` stays at the minimum: `locale` and `remote.commands`. Do not add `slots` or `configForms` to it. The settings page and GitHub action wait for their own services through `ctx.inject`, and declaring them at the top level would turn a deployment without a plugin manager into a plugin that never loads at all, taking the command-language bridge down with it.
 
 The page needs its namespace served: registration is gated on `configForms.whileServed`, so a page whose fields nothing would accept never appears.
 
 ## Localization
+
+The package locale metadata names `INTRODUCTION.md` and `INTRODUCTION.zh.md` through `meta.detail`. DSH selects the document by interface language and falls back to the package README when no locale in its language chain declares a detail. Both introduction files and both locale files must be included in the published package. The introductions use absolute links because the detail renderer does not navigate relative links.
 
 Config accepts `language: auto | en | zh`, with `auto` as the default. `resolveLanguage()` prefers validated per-call UI context in auto mode, otherwise reads `settings.describe({ redactSecrets: true })` only when needed, selects the unique `locale` namespace, and consumes only its saved `value.preference`. It does not expose unrelated form values, write preferences, inspect Node's navigator or OS environment, or assume a browser-only provisional language. A missing, unavailable, ambiguous or unsupported preference falls back to English. A Chinese primary tag selects Simplified Chinese. Settings is optional and is looked up dynamically, so its absence cannot disable update functionality.
 
@@ -119,7 +124,7 @@ Exact target installation intentionally records a new version/commit pin. Each l
 
 ## Next extension points
 
-- Register controls and tags through the official `plugins.detail.actions` and `plugins.detail.badge` slots. A future mutation UI must call the same coordinator and keep risk acceptance user-only. The Client entry currently only bridges command language; a stable updater Remote boundary and matching read-only tool contract still need verification before adding page controls.
+- A future mutation UI must call the same coordinator and keep risk acceptance user-only. A stable updater Remote boundary and matching read-only tool contract still need verification before adding update controls to the page.
 - Single-plugin index configuration is reserved as `sources.<name> = { kind: 'index', url }`; it currently reports unsupported. Global `indexes` are accepted but never fetched. Global indexes must not take over npm packages. Define source identity, precedence, conflict handling, trust and integrity before making either path active.
 - DSH's existing market index format supports npm and commit-pinned Git, not release attachments. Evaluate a compatible adapter before introducing a new format.
 - Private npm authentication, additional Git hosts, monorepo paths, npm prereleases, periodic checks, rollback and self-update are not implemented.

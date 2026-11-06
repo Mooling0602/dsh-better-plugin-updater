@@ -45,4 +45,6 @@ export declare function captureHostRequire(resolver: (specifier: string) => unkn
  * @param ctx - Client runtime owning slots and served settings forms.
  */
 export declare function mountSettingsPage(ctx: Context): void;
+/** Mount the repository link independently of the bundle's settings form. */
+export declare function mountRepositoryLink(ctx: Context): void;
 export declare function apply(ctx: Context): void;
