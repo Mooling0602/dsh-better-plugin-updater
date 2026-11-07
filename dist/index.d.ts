@@ -1,4 +1,4 @@
-/** Cordis Host entry. All package writes originate from an explicit user slash command. */
+/** Cordis Host entry. Package writes require an explicitly confirmed user operation. */
 import type { Context } from '@deepseek-ai/cordis';
 import { Updater } from './updater.js';
 export { Config } from './config.js';

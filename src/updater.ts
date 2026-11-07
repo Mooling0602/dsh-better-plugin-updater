@@ -5,7 +5,7 @@ import { gt, valid } from 'semver';
 import { errorDetail, UpdaterError } from './errors.js';
 import { message, t } from './i18n.js';
 import type { Message } from './i18n.js';
-import { githubRepository, inferSource } from './sources.js';
+import { githubRepository, inferSource, releaseAttachment } from './sources.js';
 import { prewarm } from './prewarm.js';
 import type { PrewarmOptions, PrewarmResult } from './prewarm.js';
 import type { ApplyResult, CheckResult, InstalledBundle, JsonClient, ManagementResult, PluginManager, SourceOverride, UpdateCandidate, UpdatePlan, UpdateProvider } from './types.js';
@@ -128,6 +128,11 @@ export class Updater {
     return this.track(this.checkInternal(name, signal, gitBranch));
   }
 
+  /** Check one GitHub-backed bundle without issuing requests for other source kinds. */
+  async checkGithub(name: string, signal?: AbortSignal): Promise<CheckResult | undefined> {
+    return (await this.track(this.checkInternal(name, signal, undefined, true)))[0];
+  }
+
   private async source(bundle: InstalledBundle, gitBranch?: string, snapshot?: { override: SourceOverride | undefined }) {
     const override = snapshot ? snapshot.override : structuredClone(this.options.overrides?.[bundle.name]);
     let registry = '';
@@ -143,7 +148,7 @@ export class Updater {
       ...(currentRevision === undefined ? {} : { currentRevision }), ...(gitBranch === undefined ? {} : { gitBranch }) });
   }
 
-  private async checkInternal(name?: string, callerSignal?: AbortSignal, gitBranch?: string): Promise<CheckResult[]> {
+  private async checkInternal(name?: string, callerSignal?: AbortSignal, gitBranch?: string, githubOnly = false): Promise<CheckResult[]> {
     const signal = callerSignal ? AbortSignal.any([this.abort.signal, callerSignal]) : this.abort.signal;
     signal.throwIfAborted();
     const all = await this.list();
@@ -152,6 +157,7 @@ export class Updater {
     const results: CheckResult[] = [];
     for (const bundle of bundles) {
       signal.throwIfAborted();
+      if (githubOnly && (!bundle.source || (!githubRepository(bundle.source) && !releaseAttachment(bundle.source)))) continue;
       const reason = skipReason(bundle);
       if (reason) {
         const text = message(reason.key, reason.params);
@@ -214,6 +220,12 @@ export class Updater {
     this.plans.set(plan.id, plan);
     this.planOverrides.set(plan.id, structuredClone(override));
     return plan;
+  }
+
+  /** Withdraw an unconfirmed plan without touching any package. */
+  discard(id: string): void {
+    this.plans.delete(id);
+    this.planOverrides.delete(id);
   }
 
   /** Execute one saved plan only after explicit acknowledgement; never approve dependency scripts or compatibility exemptions. */

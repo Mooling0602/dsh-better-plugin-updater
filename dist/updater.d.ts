@@ -37,10 +37,14 @@ export declare class Updater {
     list(): Promise<InstalledBundle[]>;
     /** Check one or all bundles sequentially, bounding traffic and isolating per-package failures. */
     check(name?: string, signal?: AbortSignal, gitBranch?: string): Promise<CheckResult[]>;
+    /** Check one GitHub-backed bundle without issuing requests for other source kinds. */
+    checkGithub(name: string, signal?: AbortSignal): Promise<CheckResult | undefined>;
     private source;
     private checkInternal;
     /** Freeze a checked target, with optional one-time authorization for an eligible pin. */
     prepare(result: CheckResult | undefined, allowPinned?: boolean, gitBranch?: string): UpdatePlan;
+    /** Withdraw an unconfirmed plan without touching any package. */
+    discard(id: string): void;
     /** Execute one saved plan only after explicit acknowledgement; never approve dependency scripts or compatibility exemptions. */
     apply(id: string, acceptRemovalRisk: boolean): Promise<ApplyResult>;
     private applyInternal;

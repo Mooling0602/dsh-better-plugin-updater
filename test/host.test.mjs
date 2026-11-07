@@ -28,6 +28,7 @@ test('real Cordis activation registers the service, command and read-only tool, 
   const fiber = h.ctx.plugin(plugin, {});
   await fiber.await();
   assert.ok(h.ctx.get('betterPluginUpdater'));
+  assert.ok(h.ctx.get('betterPluginUpdaterUi'));
   assert.ok(h.commands.has('plugin-updater'));
   assert.ok(h.tools.has('plugin_updates'));
   const command = h.commands.get('plugin-updater');
@@ -58,6 +59,7 @@ test('real Cordis activation registers the service, command and read-only tool, 
   assert.equal(h.commands.size, 0);
   assert.equal(h.tools.size, 0);
   assert.equal(h.ctx.get('betterPluginUpdater'), undefined);
+  assert.equal(h.ctx.get('betterPluginUpdaterUi'), undefined);
 });
 
 test('Host lazily resolves current credentials, supports optional services, and never exposes token failures', async t => {

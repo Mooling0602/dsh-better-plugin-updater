@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client';
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client';
 import { normalizeLanguage } from '../language.js';
+import remoteContribution from '../../dist/typert.remote-client.js';
 import { en, zh, type UpdaterSettingsLocaleKey } from './locales.js';
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -128,12 +129,43 @@ export function mountRepositoryLink(ctx: Context): void {
   }));
 }
 
+/** Mount GitHub detail controls only after their Remote contribution is available. */
+export function mountGitHubUpdate(ctx: Context): void {
+  ctx.inject(['slots', 'remote', 'locale'], inner => inner.effect(() => {
+    let active = true;
+    let releaseRemote: (() => Promise<void>) | undefined;
+    let releaseSlot: (() => void) | undefined;
+    const remote = inner.get('remote') as {
+      $mount(contribution: typeof remoteContribution): Promise<() => Promise<void>>;
+      $on(event: 'plugin-manager/changed', listener: () => void): () => void;
+    };
+    const events = { subscribe: (listener: () => void) => remote.$on('plugin-manager/changed', listener) };
+    void remote.$mount(remoteContribution).then(release => {
+      if (!active) { void release(); return; }
+      releaseRemote = release;
+      releaseSlot = inner.slots.inject('plugins.detail.section', () => {
+        if (!hostRequire) return () => {};
+        const { GitHubUpdateView } = require('./github-update-view.js') as { GitHubUpdateView: never };
+        const { installDialogStyles } = require('./github-update-section.js') as { installDialogStyles: () => () => void };
+        const removeStyles = installDialogStyles();
+        const disposeSlot = inner.slots.register({
+          name: 'plugins.detail.section', id: `${BUNDLE_NAME}.github-update`,
+          inject: () => ({ remote: inner.get('remote.betterPluginUpdaterUi'), locale: inner.locale, events }),
+        }, GitHubUpdateView);
+        return () => { disposeSlot(); removeStyles(); };
+      });
+    }).catch(error => { if (active) console.warn('GitHub update controls are unavailable:', error); });
+    return () => { active = false; releaseSlot?.(); if (releaseRemote) void releaseRemote(); };
+  }, 'dsh-better-plugin-updater: GitHub detail controls'));
+}
+
 export function apply(ctx: Context): void {
   const commands = ctx.get('remote.commands') as object | undefined;
   const locale = ctx.get('locale') as ClientLocale | undefined;
   // The settings page is the primary surface, so a Host missing the command wire must not cost it.
   mountSettingsPage(ctx);
   mountRepositoryLink(ctx);
+  mountGitHubUpdate(ctx);
   if (!commands || !locale) return;
   ctx.effect(() => installLanguageBridge(commands, () => locale.getSnapshot().active));
 }

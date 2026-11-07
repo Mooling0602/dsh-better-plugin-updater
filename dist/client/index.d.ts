@@ -47,4 +47,6 @@ export declare function captureHostRequire(resolver: (specifier: string) => unkn
 export declare function mountSettingsPage(ctx: Context): void;
 /** Mount the repository link independently of the bundle's settings form. */
 export declare function mountRepositoryLink(ctx: Context): void;
+/** Mount GitHub detail controls only after their Remote contribution is available. */
+export declare function mountGitHubUpdate(ctx: Context): void;
 export declare function apply(ctx: Context): void;

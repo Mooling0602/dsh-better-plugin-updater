@@ -11,6 +11,9 @@ importers:
       '@deepseek-ai/cosmokit':
         specifier: ^1.8.6
         version: 1.8.6
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/schemastery':
         specifier: ^3.18.5
         version: 3.18.5
@@ -20,6 +23,9 @@ importers:
       yaml:
         specifier: ^2.9.0
         version: 2.9.1
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: ~4.0.5
@@ -45,6 +51,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-typert-generator':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
@@ -60,6 +69,9 @@ importers:
       react:
         specifier: ^19.3.1
         version: 19.3.1
+      react-test-renderer:
+        specifier: 19.3.1
+        version: 19.3.1(react@19.3.1)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -123,6 +135,11 @@ packages:
 
   '@deepseek-ai/dsh-timeout@0.2.1-rc.4':
     resolution: {integrity: sha512-8NQcrgG/3dscm4BVPYRhWl8zQdzR1Okl/awn2rFQwrbaht8FbUU83oYYvt2FhSY51wzJxbAADw2CKgy7w+iK0Q==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ~4.0.5
+
+  '@deepseek-ai/dsh-typert-generator@0.2.1-rc.4':
+    resolution: {integrity: sha512-xfSHbkE/YpgM3zRB949XTIYo9HcpCD4KduNCqtmlOkUkWAbvQF4z6R0NX/RcgIJ2c8rUwMt67Z6V8DFfF16uoA==}
     peerDependencies:
       '@deepseek-ai/cordis': ~4.0.5
 
@@ -290,6 +307,19 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@jridgewell/gen-mapping@0.3.13':
+    resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
+
+  '@jridgewell/resolve-uri@3.1.2':
+    resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
+    engines: {node: '>=6.0.0'}
+
+  '@jridgewell/sourcemap-codec@1.6.0':
+    resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
+
+  '@jridgewell/trace-mapping@0.3.31':
+    resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
@@ -310,9 +340,20 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  react-is@19.3.1:
+    resolution: {integrity: sha512-RRieF6IyxQBkcK6pP8xOHprLTPW6QjRkbGdImtqNme+/hYVwCZkLQLdlZGOhUqXwkS9IEynaGvPJtv6XB/cz0Q==}
+
+  react-test-renderer@19.3.1:
+    resolution: {integrity: sha512-YcNewwmnZMd0wTb2nkb4hQ58NmX/u1hW2OJsNpen8CnV+jNkmEjYd1R6wJrOMSgb8bIF5HAJv4iL+S3PwNptOA==}
+    peerDependencies:
+      react: ^19.3.1
+
   react@19.3.1:
     resolution: {integrity: sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==}
     engines: {node: '>=0.10.0'}
+
+  scheduler@0.28.0:
+    resolution: {integrity: sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==}
 
   semver@7.8.5:
     resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
@@ -388,6 +429,12 @@ snapshots:
   '@deepseek-ai/dsh-timeout@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
     dependencies:
       '@deepseek-ai/cordis': 4.0.5
+
+  '@deepseek-ai/dsh-typert-generator@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.5
+      '@jridgewell/gen-mapping': 0.3.13
+      typescript: 6.0.3
 
   '@deepseek-ai/dsh-typert-protocol@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)':
     dependencies:
@@ -478,6 +525,20 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
+  '@jridgewell/gen-mapping@0.3.13':
+    dependencies:
+      '@jridgewell/sourcemap-codec': 1.6.0
+      '@jridgewell/trace-mapping': 0.3.31
+
+  '@jridgewell/resolve-uri@3.1.2': {}
+
+  '@jridgewell/sourcemap-codec@1.6.0': {}
+
+  '@jridgewell/trace-mapping@0.3.31':
+    dependencies:
+      '@jridgewell/resolve-uri': 3.1.2
+      '@jridgewell/sourcemap-codec': 1.6.0
+
   '@standard-schema/spec@1.1.0': {}
 
   '@types/node@24.19.2':
@@ -521,7 +582,17 @@ snapshots:
       '@esbuild/win32-ia32': 0.28.2
       '@esbuild/win32-x64': 0.28.2
 
+  react-is@19.3.1: {}
+
+  react-test-renderer@19.3.1(react@19.3.1):
+    dependencies:
+      react: 19.3.1
+      react-is: 19.3.1
+      scheduler: 0.28.0
+
   react@19.3.1: {}
+
+  scheduler@0.28.0: {}
 
   semver@7.8.5: {}
 

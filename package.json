@@ -21,6 +21,14 @@
       "browser": "./dist/client.js",
       "default": "./dist/client.js"
     },
+    "./typert": {
+      "types": "./dist/typert.host.d.ts",
+      "default": "./dist/typert.host.js"
+    },
+    "./remote": {
+      "types": "./dist/typert.remote-client.d.ts",
+      "default": "./dist/typert.remote-client.js"
+    },
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
     "./package.json": "./package.json"
@@ -61,15 +69,17 @@
     "url": "git+https://github.com/Mooling0602/dsh-better-plugin-updater.git"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
+    "build": "node scripts/generate-typert.mjs && tsc -p tsconfig.json && node scripts/build-client.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cosmokit": "^1.8.6",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.4",
     "@deepseek-ai/schemastery": "^3.18.5",
     "semver": "^7.7.3",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5"
@@ -83,11 +93,13 @@
     "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.4",
     "@deepseek-ai/dsh-client-ui-settings": "0.2.1-rc.4",
     "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-typert-generator": "0.2.1-rc.4",
     "@types/node": "^24.0.0",
     "@types/react": "^19.3.0",
     "@types/semver": "^7.7.1",
     "esbuild": "^0.28.2",
     "react": "^19.3.1",
+    "react-test-renderer": "19.3.1",
     "typescript": "^6.0.3"
   }
 }

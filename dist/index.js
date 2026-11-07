@@ -6,6 +6,8 @@ import { resolveLanguage } from './i18n.js';
 import { readLockedRevision } from './lockfile.js';
 import { createProviders } from './providers/index.js';
 import { Updater } from './updater.js';
+import { GitHubUi } from './github-ui.js';
+import { GitHubRemote } from './github-remote.js';
 export { Config } from './config.js';
 /** The host owns profile selection, package writes, compatibility checks, and command dispatch. */
 export const inject = ['pluginManager', 'profileContext', 'commands'];
@@ -28,6 +30,7 @@ export function apply(ctx, rawConfig = {}) {
                 command: profile.packageManager.command, args: profile.packageManager.args, env: profile.packageManager.env
             }) } });
     ctx.provide('betterPluginUpdater', updater);
+    new GitHubRemote(ctx, new GitHubUi(updater));
     ctx.effect(() => () => updater.dispose());
     ctx.effect(() => commands.register(createUpdaterCommand(updater, {
         language: clientLanguage => resolveLanguage(config.language.get(), ctx.get('settings'), clientLanguage),

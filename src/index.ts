@@ -1,4 +1,4 @@
-/** Cordis Host entry. All package writes originate from an explicit user slash command. */
+/** Cordis Host entry. Package writes require an explicitly confirmed user operation. */
 import type { Context } from '@deepseek-ai/cordis';
 import type { UpdaterConfig } from './config.js';
 import { createUpdaterCommand } from './commands.js';
@@ -13,6 +13,8 @@ import type { LocaleSettings } from './i18n.js';
 import { readLockedRevision } from './lockfile.js';
 import { createProviders } from './providers/index.js';
 import { Updater } from './updater.js';
+import { GitHubUi } from './github-ui.js';
+import { GitHubRemote } from './github-remote.js';
 import type { PluginManager } from './types.js';
 
 export { Config } from './config.js';
@@ -54,6 +56,7 @@ export function apply(ctx: Context, rawConfig: unknown = {}): void {
     prewarm: { profileDir: profile.dir, ...(profile.packageManager === undefined ? {} : {
       command: profile.packageManager.command, args: profile.packageManager.args, env: profile.packageManager.env }) } });
   ctx.provide('betterPluginUpdater', updater);
+  new GitHubRemote(ctx, new GitHubUi(updater));
   ctx.effect(() => () => updater.dispose());
   ctx.effect(() => commands.register(createUpdaterCommand(updater, {
     language: clientLanguage => resolveLanguage(config.language.get(), ctx.get('settings') as LocaleSettings | undefined, clientLanguage),

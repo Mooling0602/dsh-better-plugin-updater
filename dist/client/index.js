@@ -1,4 +1,5 @@
 import { normalizeLanguage } from '../language.js';
+import remoteContribution from '../../dist/typert.remote-client.js';
 import { en, zh } from './locales.js';
 /** Dictionary namespace this bundle owns. */
 export const NS = 'settings.updater';
@@ -103,12 +104,45 @@ export function mountRepositoryLink(ctx) {
         }, RepositoryLink);
     }));
 }
+/** Mount GitHub detail controls only after their Remote contribution is available. */
+export function mountGitHubUpdate(ctx) {
+    ctx.inject(['slots', 'remote', 'locale'], inner => inner.effect(() => {
+        let active = true;
+        let releaseRemote;
+        let releaseSlot;
+        const remote = inner.get('remote');
+        const events = { subscribe: (listener) => remote.$on('plugin-manager/changed', listener) };
+        void remote.$mount(remoteContribution).then(release => {
+            if (!active) {
+                void release();
+                return;
+            }
+            releaseRemote = release;
+            releaseSlot = inner.slots.inject('plugins.detail.section', () => {
+                if (!hostRequire)
+                    return () => { };
+                const { GitHubUpdateView } = require('./github-update-view.js');
+                const { installDialogStyles } = require('./github-update-section.js');
+                const removeStyles = installDialogStyles();
+                const disposeSlot = inner.slots.register({
+                    name: 'plugins.detail.section', id: `${BUNDLE_NAME}.github-update`,
+                    inject: () => ({ remote: inner.get('remote.betterPluginUpdaterUi'), locale: inner.locale, events }),
+                }, GitHubUpdateView);
+                return () => { disposeSlot(); removeStyles(); };
+            });
+        }).catch(error => { if (active)
+            console.warn('GitHub update controls are unavailable:', error); });
+        return () => { active = false; releaseSlot?.(); if (releaseRemote)
+            void releaseRemote(); };
+    }, 'dsh-better-plugin-updater: GitHub detail controls'));
+}
 export function apply(ctx) {
     const commands = ctx.get('remote.commands');
     const locale = ctx.get('locale');
     // The settings page is the primary surface, so a Host missing the command wire must not cost it.
     mountSettingsPage(ctx);
     mountRepositoryLink(ctx);
+    mountGitHubUpdate(ctx);
     if (!commands || !locale)
         return;
     ctx.effect(() => installLanguageBridge(commands, () => locale.getSnapshot().active));

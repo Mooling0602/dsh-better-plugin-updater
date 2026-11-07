@@ -4,7 +4,7 @@
 
 Check for and install updates to your DeepSeek Harness plugins, without leaving DSH.
 
-It uses DSH's own plugin manager to change packages, so an update goes through the same path as the plugin page. Nothing runs in the background and nothing restarts on its own: you ask for a check, you see the exact target, and you confirm.
+It uses DSH's plugin manager to change packages. Open a GitHub-sourced plugin's detail page to check and review its update, or use the commands below. Registry packages keep DSH's native update controls. Updates never run without your confirmation.
 
 ## Requirements
 
@@ -57,7 +57,7 @@ Commands follow your interface language. To force one:
 
 ### Let the agent check for you
 
-The same checks are available to the agent as the read-only `plugin_updates` tool. It can list bundles and check for updates, but it cannot install updates, accept the removal risk, approve a build script or grant a compatibility exemption. Updates require your slash command.
+The same checks are available to the agent as the read-only `plugin_updates` tool. It can list bundles and check for updates, but it cannot install updates, accept the removal risk, approve a build script or grant a compatibility exemption. Updates require your confirmation in the detail page or a slash command.
 
 ## What it can check
 
