@@ -14,10 +14,18 @@ It uses DSH's plugin manager to change packages. Open a GitHub-sourced plugin's 
 ## Install
 
 ```sh
-dsh plugin --profile web add github:Mooling0602/dsh-better-plugin-updater
+dsh plugin --profile web add dsh-better-plugin-updater
 ```
 
-Replace `web` with the profile you use. Then refresh an already-open Web page so the browser half loads. This package ships prebuilt files, so the install runs no build step. Its own dependencies need no install scripts either, though a profile policy can still prompt for other packages.
+The package is published to npm, so this fetches a bundle that is already built: the install runs no build step and needs no toolchain on this machine. Its own dependencies need no install scripts either, though a profile policy can still prompt for other packages.
+
+Replace `web` with the profile you use. Then refresh an already-open Web page so the browser half loads.
+
+Installing from the repository works too, but that source holds no built files, so the install has to build the bundle and may ask you to approve that step:
+
+```sh
+dsh plugin --profile web add github:Mooling0602/dsh-better-plugin-updater
+```
 
 To remove it:
 

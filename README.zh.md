@@ -14,10 +14,18 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add github:Mooling0602/dsh-better-plugin-updater
+dsh plugin --profile web add dsh-better-plugin-updater
 ```
 
-把 `web` 换成你在用的那个 profile。然后刷新已经打开的 Web 页面，让浏览器那一半加载进来。这个包自带预构建文件，安装过程不执行构建步骤。它自身的依赖也不需要安装脚本，不过 profile 的策略仍可能就其他包向你询问。
+这个包已发布到 npm，因此安装拿到的是已经构建好的产物：安装过程不执行构建，本机也不需要工具链。它自身的依赖同样不需要安装脚本，不过 profile 的策略仍可能就其他包向你询问。
+
+把 `web` 换成你在用的那个 profile。然后刷新已经打开的 Web 页面，让浏览器那一半加载进来。
+
+也可以直接从仓库安装，但该来源不含构建产物，安装时会构建这个插件包，并可能请你批准该构建步骤：
+
+```sh
+dsh plugin --profile web add github:Mooling0602/dsh-better-plugin-updater
+```
 
 要卸载：
 

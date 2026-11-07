@@ -32,7 +32,7 @@ Follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0
 - **Body** explains why the change was made. It is mandatory for a bug fix or for a change to a persisted format, because a one line subject cannot justify either of them.
 - **Do not wrap the message by hand.** The subject and each body paragraph are one complete line, with no limit on how many characters that line holds. Where a body benefits from separate points, use a Markdown list with one point per line rather than hard-wrapped prose; section 8 states the rule and the reason it exists.
 - **Footers:** use `BREAKING CHANGE: <description>` or a `!` after the type for any change to the published package contract. That contract covers the `dsh.bundle` patch, the exported subpaths, the `plugin_updates` JSON shape, the `--client-lang` command metadata, the configuration schema and the profile-local scheduled queue format. Reference issues as `Closes #123`.
-- **One logical change per commit.** Do not mix an unrelated refactor, a formatting sweep, a dependency bump or a regenerated `dist/` tree into a behavioural fix.
+- **One logical change per commit.** Do not mix an unrelated refactor, a formatting sweep or a dependency bump into a behavioural fix.
 
 Examples that fit this repository:
 
@@ -54,7 +54,7 @@ Every module, public class and public function carries a docstring in the standa
 - **TypeScript** (`src/**/*.ts`): JSDoc. Put a `/** ... */` block on every exported symbol. The type signature carries the types; use `@param`, `@returns` and `@throws` only for the part of the contract the signature cannot express, such as units, ordering and failure conditions. Existing docstrings in this repository are mostly a single summary line, and that is the right shape while the signature says the rest.
 - **Test files** (`test/*.test.mjs`) are plain JavaScript with no build step. A comment is needed only where a fixture reproduces a host behaviour that is not obvious from the assertions.
 
-The source is `src/**/*.ts`. Everything under `dist/` is build output: `tsc` emits the declarations, the maps and the Node ESM modules, and `scripts/build-client.mjs` turns `src/client/index.ts` into the self contained browser factory at `dist/client.js`. **Change the `.ts` file, run `pnpm build`, and never edit or document a generated file.** Unlike a package that ships artifacts at release time, this repository tracks `dist/`, so the regenerated output belongs in the same commit as the source change. See section 6.
+The source is `src/**/*.ts`. Everything under `dist/` is build output: `tsc` emits the declarations, the maps and the Node ESM modules, `scripts/generate-typert.mjs` writes the Remote descriptors, and `scripts/build-client.mjs` turns `src/client/index.ts` into the self contained browser factory at `dist/client.js`. **Change the `.ts` file, run `pnpm build`, and never edit or document a generated file.** `dist/` is ignored by Git: it is built on install, before packing and in CI, so a generated file never enters a commit. The npm tarball still ships `dist/`, so a published installation runs no build step. See section 6.
 
 A docstring states a contract. It does not restate the signature. Say what the code does, what it owns, what it may throw and which invariant the caller must uphold. Units, ordering guarantees and lifetime rules belong here.
 
@@ -139,9 +139,9 @@ pnpm test
 pnpm pack
 ```
 
-- `pnpm check` is a type check with no output. `pnpm test` builds first, then runs `node --test test/*.test.mjs` against the compiled `dist/` modules, so a stale build hides a broken test and an edited `dist/` passes a test the source does not.
+- `pnpm check` writes the generated Remote descriptors and then type checks with no output. `pnpm test` builds first, then runs `node --test test/*.test.mjs` against the compiled `dist/` modules, so a stale build hides a broken test.
 - Tests activate the plugin in the real Cordis lifecycle with fake DSH services, and they mock provider requests and package writes. **Do not add a test that needs the network, a real credential, a live registry or GitHub, a real plugin upgrade or a restarted DSH.** Such a test is a manual smoke check and belongs in `CONTEXT.md` as a described procedure, not in `test/`.
-- Before a handoff, run `pnpm check` and `pnpm test`, and confirm that `dist/` was regenerated from the current source. A result reported to the user as passing must come from the commands above, not from a narrower ad hoc check.
+- Before a handoff, run `pnpm check` and `pnpm test`, and confirm that the build succeeds with no `dist/` present, since nothing generated is committed. A result reported to the user as passing must come from the commands above, not from a narrower ad hoc check.
 - Build or pack only. **Do not install this bundle into a live DSH profile, restart that profile, or perform a real plugin upgrade as an incidental development check.**
 
 ## 7. Working with the DeepSeek Harness runtime

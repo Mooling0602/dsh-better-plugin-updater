@@ -43,6 +43,7 @@
     "INTRODUCTION.md",
     "INTRODUCTION.zh.md",
     "CONTEXT.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "dsh": {
@@ -70,8 +71,11 @@
   },
   "scripts": {
     "build": "node scripts/generate-typert.mjs && tsc -p tsconfig.json && node scripts/build-client.mjs",
-    "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "check": "node scripts/generate-typert.mjs && tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run check && npm run test",
+    "release:notes": "node .github/scripts/release-notes.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cosmokit": "^1.8.6",

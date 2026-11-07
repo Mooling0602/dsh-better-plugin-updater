@@ -26,6 +26,7 @@ src/client/settings-controller.ts Settings form scope, field specs and page snap
 src/client/settings-page.tsx Settings page rendered from the shared settings primitives
 src/client/locales.ts   Client-side page dictionaries (English and Simplified Chinese)
 scripts/build-client.mjs Self-contained browser factory generation with esbuild
+.github/scripts/release-notes.mjs Release-note assembly from CHANGELOG.md
 src/locales/            Complete English and Simplified Chinese dictionaries
 src/errors.ts           Owned failures with stable translation identities
 src/credentials.ts      Read-only credential-reference adapter and safe provider-error boundary
@@ -173,4 +174,12 @@ pnpm test
 pnpm pack
 ```
 
-Tests use `node:test` against compiled modules. Edit TypeScript rather than generated JavaScript, then run `pnpm build` and commit the generated `dist/` alongside source changes. Git installation uses these committed artifacts without a prepare or prepack script. Build explicitly before packing and keep exported resources and distribution files aligned. Other dependencies or profile policies may independently require build approval. Do not install into a live profile or restart it as an incidental development check.
+Tests use `node:test` against compiled modules. Edit TypeScript rather than generated JavaScript, then run `pnpm build`. `dist/` is ignored by Git, so no generated file is ever committed; `prepare` builds it on install, `prepublishOnly` re-checks and re-tests before a publish, and `pnpm pack` therefore packs a freshly built tree. A profile that installs the published tarball runs no build step, while an installation from the Git repository builds through `prepare` and can be asked to approve that build. Keep exported resources and distribution files aligned. Do not install into a live profile or restart it as an incidental development check.
+
+## Release
+
+`CHANGELOG.md` carries the install notice under `## Header`, the `**full_changelog!**` placeholder under `## Endfix`, and one `## <version>` section per release, newest first. A version section may override either shared part with its own H3 `Header` or `Endfix`. `release.yml` publishes only the section matching the pushed tag.
+
+A release is a version commit followed by an annotated tag: commit `release: v<x.y.z>`, then `git tag -a <x.y.z> -m "commit <short hash>"`, then push the branch and the tag together. The tag carries no `v`, while the release title and the note heading do. Pushing the tag runs `.github/workflows/release.yml`, which verifies, publishes to npm, and creates the GitHub release from the generated note.
+
+Publishing uses npm trusted publishing over OpenID Connect: the workflow grants `id-token: write`, sets the registry URL, and passes no token, so the npm CLI exchanges the workflow identity for a short-lived credential. That requires the trusted publisher to be configured for this repository and workflow on npmjs.com, and npm requires the package to exist before that setting is offered, so the first version is published once with a local credential. Every published version gets a provenance attestation linking it to the commit that built it.
