@@ -4,7 +4,7 @@
 
 Check for and install updates to your DeepSeek Harness plugins, without leaving DSH.
 
-It uses DSH's plugin manager to change packages. Open a GitHub-sourced plugin's detail page to check and review its update, or use the commands below. Registry packages keep DSH's native update controls. Updates never run without your confirmation.
+It uses DSH's plugin manager to change packages. Open a GitHub-sourced plugin's detail page to check and review its update, or use the commands below. npm registry packages keep DSH's native update controls. Updates never run without your confirmation.
 
 ## Requirements
 
@@ -28,6 +28,14 @@ dsh plugin --profile web remove dsh-better-plugin-updater
 If the update commands do not appear after a refresh, restart DSH once. DSH remembers that an installed package had no browser code, and an installation that was already running without the browser half keeps that cached answer until DSH starts again. A fresh installation does not hit this.
 
 ## Use
+
+### Update from a plugin's page
+
+Open Plugins and then the detail page of a plugin you installed from GitHub. A Version section appears under its source information and checks for an update as soon as the page opens. It shows the current commit or version against the exact target, and the update runs only after you accept the risk in the confirmation dialog.
+
+This section is for plugins installed from a GitHub repository or a GitHub release tarball. npm registry packages keep DSH's own version control, and a linked or local plugin has no update source to check.
+
+### Use the commands
 
 ```text
 /plugin-updater                   list installed plugin bundles
