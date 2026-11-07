@@ -15,7 +15,7 @@ test('inventory is a compact grouped list, including disabled, missing and DSH-p
     { ...bundle, name: 'official-plugin', availability: 'installation', installed: false },
     { ...bundle, name: 'missing-plugin', availability: 'missing', error: { code: 'missing-files' } },
   ]);
-  assert.match(text, /2 installed in this profile, 1 provided by DSH, 1 missing or not installed/);
+  assert.match(text, /2 installed in this profile, 1 provided by DSH, 1 not installed or unreadable/);
   assert.match(text, /- example-plugin v1\.0\.0 \(enabled, npm\)/);
   assert.match(text, /- local-plugin v1\.0\.0 \(disabled, local\)/);
   assert.match(text, /Provided by DSH \(1\)/);

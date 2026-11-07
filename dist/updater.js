@@ -23,12 +23,14 @@ export function isSelfBundle(bundle) {
     return bundle.name === 'dsh-better-plugin-updater';
 }
 function skipReason(bundle) {
-    if (!bundle.installed || bundle.availability === 'missing')
-        return { key: 'msg.unavailable' };
     if (bundle.availability === 'installation')
         return { key: 'msg.provided' };
     if (bundle.installTarget)
         return { key: 'msg.official' };
+    if (!bundle.installed)
+        return { key: 'msg.unavailable' };
+    if (bundle.availability === 'missing')
+        return { key: 'msg.filesUnavailable' };
     if (!bundle.removable || bundle.readOnlyReason)
         return { key: 'msg.protected' };
     if (bundle.error)

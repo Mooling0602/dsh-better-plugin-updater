@@ -456,14 +456,29 @@ test('protected, installation and official-target bundles are not checked', asyn
   const base = f.bundles[0];
   f.bundles = [
     { ...base, name: 'official', installTarget: { spec: 'official@2', version: '2' } },
-    { ...base, name: 'shipped', availability: 'installation' },
+    { ...base, name: 'shipped', availability: 'installation', installed: false },
     { ...base, name: 'protected', removable: false },
-    { ...base, name: 'absent', availability: 'missing' },
+    { ...base, name: 'absent', installed: false, availability: 'missing' },
   ];
   const results = await f.updater.check();
   assert.equal(results.every(result => result.status === 'skipped'), true);
   await assert.rejects(prepare(f.updater, 'official'));
   await assert.rejects(f.updater.check('not-present'));
+  assert.deepEqual(f.calls, []);
+});
+
+test('skip reasons distinguish shipped, catalog and uninstalled bundles', async () => {
+  const f = fixture();
+  const base = f.bundles[0];
+  f.bundles = [
+    { ...base, name: 'shipped', availability: 'installation', installed: false, installTarget: { spec: 'shipped@2', version: '2' } },
+    { ...base, name: 'catalog', availability: 'missing', installed: false, installTarget: { spec: 'catalog@2', version: '2' } },
+    { ...base, name: 'unreadable', availability: 'missing', installed: true },
+    { ...base, name: 'undeclared', availability: 'profile', installed: false },
+  ];
+  const results = await f.updater.check();
+  assert.deepEqual(results.map(result => result.detail?.key),
+    ['msg.provided', 'msg.official', 'msg.filesUnavailable', 'msg.unavailable']);
   assert.deepEqual(f.calls, []);
 });
 

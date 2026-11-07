@@ -95,6 +95,7 @@ export declare const zh: {
     'msg.selfPinnedUpdate': string;
     'msg.unavailable': string;
     'msg.provided': string;
+    'msg.filesUnavailable': string;
     'msg.official': string;
     'msg.protected': string;
     'msg.broken': string;

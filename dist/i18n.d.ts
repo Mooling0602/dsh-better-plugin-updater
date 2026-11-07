@@ -35,10 +35,10 @@ export declare const dictionaries: {
         readonly 'ui.installTarget': "Install target: {spec}";
         readonly 'ui.registry': "Registry: {registry}";
         readonly 'ui.inventory.empty': "No plugin bundles are listed in this profile.";
-        readonly 'ui.inventory.summary': "Plugin bundles: {profile} installed in this profile, {provided} provided by DSH, {other} missing or not installed.";
+        readonly 'ui.inventory.summary': "Plugin bundles: {profile} installed in this profile, {provided} provided by DSH, {other} not installed or unreadable.";
         readonly 'ui.inventory.profile': "Profile plugins";
         readonly 'ui.inventory.provided': "Provided by DSH";
-        readonly 'ui.inventory.other': "Missing or not installed";
+        readonly 'ui.inventory.other': "Not installed or unreadable";
         readonly 'ui.group': "{title} ({count}):";
         readonly 'ui.problem': "Problem: {code}";
         readonly 'ui.checkHint': "Check for updates: /plugin-updater check [package]";
@@ -110,6 +110,7 @@ export declare const dictionaries: {
         readonly 'msg.selfPinnedUpdate': "A newer version is available, but this package is pinned. This plugin cannot update itself; use an external method appropriate for its installation source.";
         readonly 'msg.unavailable': "The package is not available as an installed bundle.";
         readonly 'msg.provided': "This bundle is supplied by the DSH installation.";
+        readonly 'msg.filesUnavailable': "This bundle is installed, but its package files cannot be read.";
         readonly 'msg.official': "Use the official update target already provided by DSH.";
         readonly 'msg.protected': "The host protects this bundle from removal.";
         readonly 'msg.broken': "Repair the existing bundle error before updating.";
@@ -267,6 +268,7 @@ export declare const dictionaries: {
         'msg.selfPinnedUpdate': string;
         'msg.unavailable': string;
         'msg.provided': string;
+        'msg.filesUnavailable': string;
         'msg.official': string;
         'msg.protected': string;
         'msg.broken': string;
