@@ -40,6 +40,7 @@ export function isSelfBundle(bundle: Pick<InstalledBundle, 'name'>): boolean {
 }
 function skipReason(bundle: InstalledBundle): Message | undefined {
   if (bundle.availability === 'installation') return { key: 'msg.provided' };
+  if (bundle.error?.code === 'unsupported-platform') return { key: 'msg.platformUnsupported' };
   if (bundle.installTarget) return { key: 'msg.official' };
   if (!bundle.installed) return { key: 'msg.unavailable' };
   if (bundle.availability === 'missing') return { key: 'msg.filesUnavailable' };

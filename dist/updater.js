@@ -25,6 +25,8 @@ export function isSelfBundle(bundle) {
 function skipReason(bundle) {
     if (bundle.availability === 'installation')
         return { key: 'msg.provided' };
+    if (bundle.error?.code === 'unsupported-platform')
+        return { key: 'msg.platformUnsupported' };
     if (bundle.installTarget)
         return { key: 'msg.official' };
     if (!bundle.installed)

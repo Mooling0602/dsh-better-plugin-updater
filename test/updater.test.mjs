@@ -475,10 +475,12 @@ test('skip reasons distinguish shipped, catalog and uninstalled bundles', async 
     { ...base, name: 'catalog', availability: 'missing', installed: false, installTarget: { spec: 'catalog@2', version: '2' } },
     { ...base, name: 'unreadable', availability: 'missing', installed: true },
     { ...base, name: 'undeclared', availability: 'profile', installed: false },
+    { ...base, name: 'wrong-platform', availability: 'missing', installed: false, error: { code: 'unsupported-platform' }, installTarget: { spec: 'wrong@2', version: '2' } },
   ];
   const results = await f.updater.check();
   assert.deepEqual(results.map(result => result.detail?.key),
-    ['msg.provided', 'msg.official', 'msg.filesUnavailable', 'msg.unavailable']);
+    ['msg.provided', 'msg.official', 'msg.filesUnavailable', 'msg.unavailable', 'msg.platformUnsupported']);
+  assert.equal(results.every(result => result.status === 'skipped'), true);
   assert.deepEqual(f.calls, []);
 });
 

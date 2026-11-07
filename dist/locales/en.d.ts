@@ -99,6 +99,7 @@ export declare const en: {
     readonly 'msg.filesUnavailable': "This bundle is installed, but its package files cannot be read.";
     readonly 'msg.official': "Use the official update target already provided by DSH.";
     readonly 'msg.protected': "The host protects this bundle from removal.";
+    readonly 'msg.platformUnsupported': "This bundle cannot run on this Host platform.";
     readonly 'msg.broken': "Repair the existing bundle error before updating.";
     readonly 'msg.checkFailed': "Source check failed.";
     readonly 'msg.prewarmFailed': "The new package could not be staged for installation, so the installed one was left in place.";

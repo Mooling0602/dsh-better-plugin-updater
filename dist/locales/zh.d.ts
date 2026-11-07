@@ -98,6 +98,7 @@ export declare const zh: {
     'msg.filesUnavailable': string;
     'msg.official': string;
     'msg.protected': string;
+    'msg.platformUnsupported': string;
     'msg.broken': string;
     'msg.checkFailed': string;
     'msg.prewarmFailed': string;

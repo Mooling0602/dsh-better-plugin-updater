@@ -52,6 +52,7 @@ export const zh = {
     'msg.unavailable': '该插件包未在配置中声明，或不可作为已安装的插件包使用。', 'msg.provided': '该插件包由 DSH 安装提供。',
     'msg.filesUnavailable': '该插件包已安装，但无法读取其安装文件。',
     'msg.official': '请使用 DSH 已提供的官方更新入口。', 'msg.protected': '该插件包受主机保护，不能移除。',
+    'msg.platformUnsupported': '该插件包不支持当前主机的平台。',
     'msg.broken': '请先修复插件包现有的问题，再尝试更新。', 'msg.checkFailed': '来源检查失败。',
     'msg.prewarmFailed': '未能预先缓存新包，已保留当前安装的版本。',
     'msg.prewarmStore': '无法确定该 profile 的包存储目录，未预先缓存新包。',

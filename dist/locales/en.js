@@ -53,6 +53,7 @@ export const en = {
     'msg.unavailable': 'The package is not available as an installed bundle.', 'msg.provided': 'This bundle is supplied by the DSH installation.',
     'msg.filesUnavailable': 'This bundle is installed, but its package files cannot be read.',
     'msg.official': 'Use the official update target already provided by DSH.', 'msg.protected': 'The host protects this bundle from removal.',
+    'msg.platformUnsupported': 'This bundle cannot run on this Host platform.',
     'msg.broken': 'Repair the existing bundle error before updating.', 'msg.checkFailed': 'Source check failed.',
     'msg.prewarmFailed': 'The new package could not be staged for installation, so the installed one was left in place.',
     'msg.prewarmStore': 'The package store directory for this profile could not be determined, so the new package was not staged.',
