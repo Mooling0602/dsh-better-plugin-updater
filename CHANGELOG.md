@@ -17,10 +17,10 @@ Release notes for this DSH plugin bundle. Version sections are ordered newest fi
 
 ### Features
 
-- Check npm registry, GitHub source and GitHub release bundles for updates without leaving DSH.
-- Update a GitHub-sourced plugin from its own detail page; npm packages keep DSH's native version controls.
-- Show the exact install target and require an explicit risk acknowledgement before any package is removed.
-- Stage a registry target in the profile store before removal, so a failed download leaves the installed package in place.
-- Support a fixed npm version or Git commit through a one-time authorization, and pick a Git ref for one operation.
-- Offer a read-only `plugin_updates` tool that can list and check but never install.
-- Report command output and the detail page in English or Simplified Chinese.
+- Check npm registry, GitHub source and GitHub release bundles for updates without leaving DSH, in commit 445df23.
+- Update a GitHub-sourced plugin from its own detail page; npm packages keep DSH's native version controls, in commit 46d7cd7.
+- Show the exact install target and require an explicit risk acknowledgement before any package is removed, in commit 445df23.
+- Stage a registry target in the profile store before removal, so a failed download leaves the installed package in place, in commit 0d4fdbf.
+- Support a fixed npm version or Git commit through a one-time authorization, and pick a Git ref for one operation, in commit 0d4fdbf.
+- Offer a read-only `plugin_updates` tool that can list and check but never install, in commit 445df23.
+- Report command output and the detail page in English or Simplified Chinese, in commit 445df23.
