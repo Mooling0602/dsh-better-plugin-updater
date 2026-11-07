@@ -80,9 +80,9 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Stage the version on npm
+      - name: Publish to npm
         if: steps.registry.outputs.exists == 'false'
-        run: npm stage publish --provenance --access public
+        run: npm publish --provenance --access public
       - name: Pack the plugin bundle
         run: pnpm pack
       - name: Tag the release commit
