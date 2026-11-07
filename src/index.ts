@@ -21,6 +21,12 @@ export type { UpdaterConfig } from './config.js';
 interface Commands { register(definition: UpdaterCommand): () => void }
 interface Tools { register(definition: UpdaterTool): () => void }
 
+/** Application-owned package manager invocation; environment applies only to package operations. */
+interface ProfileContextFacts {
+  readonly dir?: string;
+  readonly packageManager?: { readonly command: string; readonly args: readonly string[]; readonly env: Readonly<Record<string, string>> };
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Read-only checking and confirmed updates for the current profile. Not a Remote service. */
@@ -35,7 +41,7 @@ export const inject = ['pluginManager', 'profileContext', 'commands'];
 export function apply(ctx: Context, rawConfig: unknown = {}): void {
   const config = rawConfig as UpdaterConfig;
   const manager = ctx.get('pluginManager') as PluginManager | undefined;
-  const profile = ctx.get('profileContext') as { dir?: string } | undefined;
+  const profile = ctx.get('profileContext') as ProfileContextFacts | undefined;
   const commands = ctx.get('commands') as Commands | undefined;
   if (!manager || !profile?.dir || !commands || typeof manager.listBundles !== 'function'
     || typeof manager.registries !== 'function' || typeof manager.removeBundle !== 'function'
@@ -44,7 +50,9 @@ export function apply(ctx: Context, rawConfig: unknown = {}): void {
     client: createJsonClient({ timeoutMs: () => config.requestTimeoutMs.get(), maxBytes: () => config.maxMetadataBytes.get(),
       resolveGithubToken: () => resolveGithubToken(config.githubTokenEnv.get(), ctx.get('credentials') as CredentialReferences | undefined) }),
     providers: createProviders(), overrides: config.sources, planTtlMs: () => config.planTtlMs.get(),
-    currentRevision: bundle => readLockedRevision(profile.dir!, bundle) });
+    currentRevision: bundle => readLockedRevision(profile.dir!, bundle),
+    prewarm: { profileDir: profile.dir, ...(profile.packageManager === undefined ? {} : {
+      command: profile.packageManager.command, args: profile.packageManager.args, env: profile.packageManager.env }) } });
   ctx.provide('betterPluginUpdater', updater);
   ctx.effect(() => () => updater.dispose());
   ctx.effect(() => commands.register(createUpdaterCommand(updater, {

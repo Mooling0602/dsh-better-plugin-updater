@@ -79,14 +79,15 @@ export interface JsonClient {
 /** A source-specific, read-only version or revision check. */
 export interface UpdateProvider {
   readonly kind: 'npm' | 'github-source' | 'github-release';
-  check(bundle: InstalledBundle, source: UpdateSource, client: JsonClient, signal?: AbortSignal): Promise<ProviderResult>;
+  check(bundle: InstalledBundle, source: UpdateSource, client: JsonClient, signal?: AbortSignal, gitBranch?: string): Promise<ProviderResult>;
 }
 
 /** Source inference inputs provided by the host adapter or tests. */
 export interface SourceContext {
   readonly registry: string;
   readonly override?: SourceOverride;
-  readonly currentRevision?: string;
+  readonly currentRevision?: string | null;
+  readonly gitBranch?: string;
 }
 
 /** User-visible inventory and provider outcomes. */
@@ -105,6 +106,7 @@ export interface UpdatePlan {
   readonly createdAt: string;
   readonly expiresAt: string;
   readonly command: string;
+  readonly gitBranch?: string;
   readonly bundle: InstalledBundle;
   readonly source: UpdateSource;
   readonly candidate: UpdateCandidate;
@@ -145,4 +147,6 @@ export interface ApplyResult {
   readonly installation?: ManagementResult;
   readonly remaining?: InstalledBundle;
   readonly recovery?: UpdateCandidate;
+  /** The package manager's own text when staging failed before removal, preserved verbatim. */
+  readonly diagnostic?: string;
 }

@@ -34,6 +34,8 @@ export declare const zh: {
     'ui.offeredCommit': string;
     'ui.unknown': string;
     'ui.source': string;
+    'ui.gitRef': string;
+    'ui.gitDefaultRef': string;
     'ui.planHint': string;
     'ui.check.empty': string;
     'ui.check.summary': string;
@@ -74,6 +76,7 @@ export declare const zh: {
     'msg.versionCurrent': string;
     'msg.prerelease': string;
     'msg.gitPinned': string;
+    'msg.gitPinnedUpdate': string;
     'msg.gitUnknown': string;
     'msg.gitCurrent': string;
     'msg.gitUpdate': string;
@@ -96,6 +99,9 @@ export declare const zh: {
     'msg.protected': string;
     'msg.broken': string;
     'msg.checkFailed': string;
+    'msg.prewarmFailed': string;
+    'msg.prewarmStore': string;
+    'msg.prewarmUnsupported': string;
     'msg.removalFailed': string;
     'msg.installed': string;
     'msg.unexpectedState': string;

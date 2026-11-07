@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Updater, createProviders } from '../dist/core.js';
 import { createUpdaterCommand } from '../dist/commands.js';
 import { createUpdaterTool } from '../dist/tools.js';
+import { lockedRevision } from '../dist/lockfile.js';
 
 function fixture(options = {}) {
   let bundles = [{ name: 'plugin', version: '1.0.0', source: 'plugin@^1.0.0', enabled: false, installed: true, removable: true, availability: 'profile' }];
@@ -169,14 +170,283 @@ test('repeating a pinned update must retain its one-time authorization', async (
   await f.updater.dispose();
 });
 
-test('one-time npm authorization does not authorize pinned Git sources', async () => {
-  const f = fixture({ providers: createProviders(), client: { async get() { return { sha: 'b'.repeat(40) }; } } });
-  f.bundles = [{ ...f.bundles[0], source: `github:owner/repo#${'a'.repeat(40)}` }];
+function pinnedGitFixture(options = {}) {
+  const baseline = 'a'.repeat(40);
+  let revision = baseline;
+  let candidate = 'b'.repeat(40);
+  const requests = [];
+  const client = { async get(url) { requests.push(url); return { sha: candidate, commit: { sha: candidate } }; } };
+  const f = fixture({ providers: createProviders(), client, currentRevision: async () => revision, ...options });
+  f.bundles = [{ ...f.bundles[0], source: `github:owner/repo#${baseline}` }];
+  const bundle = f.bundles[0];
+  f.manager.installBundle = async (spec, settings) => {
+    f.calls.push(['install', spec, settings]);
+    revision = spec.split('#')[1];
+    f.bundles = [{ ...bundle, source: spec, version: '1.0.0', enabled: settings.enabled }];
+    return { application: 'applied', bundle: 'plugin', version: '1.0.0' };
+  };
+  return Object.assign(f, { baseline, requests, setRevision(value) { revision = value; }, setCandidate(value) { candidate = value; } });
+}
+
+test('one-time authorization previews an exact Git commit and preserves recovery', async () => {
+  const f = pinnedGitFixture();
   const [result] = await f.updater.check('plugin');
+  assert.equal(f.requests[0], 'https://api.github.com/repos/owner/repo/commits/HEAD');
   assert.equal(result.status, 'pinned');
-  assert.equal(result.source.kind, 'github-source');
-  assert.throws(() => f.updater.prepare(result, true));
-  assert.equal((await createUpdaterCommand(f.updater).handler({ rawInput: 'update plugin --allow-pinned' })).kind, 'error');
+  assert.equal(result.candidate.spec, `github:owner/repo#${'b'.repeat(40)}`);
+  const preview = await createUpdaterCommand(f.updater).handler({ rawInput: 'check plugin --lang zh' });
+  assert.match(preview.text, /HEAD（仓库默认分支）/);
+  assert.match(preview.text, /提交 a{12} -> b{12}/);
+  assert.throws(() => f.updater.prepare(result));
+  const plan = f.updater.prepare(result, true);
+  assert.deepEqual(f.calls, []);
+  assert.equal(plan.candidate.revision, 'b'.repeat(40));
+  assert.equal(plan.candidate.version, undefined);
+  const applied = await f.updater.apply(plan.id, true);
+  assert.equal(applied.status, 'updated');
+  assert.equal(f.calls[1][1], `github:owner/repo#${'b'.repeat(40)}`);
+  assert.equal(f.calls[1][2].saveExact, true);
+  assert.equal(f.calls[1][2].enabled, false);
+  assert.equal(applied.recovery.spec, `github:owner/repo#${f.baseline}`);
+  await f.updater.dispose();
+});
+
+test('pinned Git checks use configured and temporary refs in order', async () => {
+  const overrides = { plugin: { kind: 'github-source', repository: 'owner/repo', ref: 'configured' } };
+  const f = pinnedGitFixture({ overrides });
+  const [configured] = await f.updater.check('plugin');
+  assert.match(f.requests.at(-1), /\/commits\/configured$/);
+  assert.equal(configured.status, 'pinned');
+  const [temporary] = await f.updater.check('plugin', undefined, 'feature/topic');
+  assert.match(f.requests.at(-1), /\/branches\/feature%2Ftopic$/);
+  assert.equal(temporary.status, 'pinned');
+  const plan = f.updater.prepare(temporary, true, 'feature/topic');
+  assert.equal(plan.candidate.spec, `github:owner/repo#${'b'.repeat(40)}`);
+  await f.updater.check('plugin');
+  assert.match(f.requests.at(-1), /\/commits\/configured$/);
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('an explicit Git branch never falls back to a tag or default ref', async () => {
+  const calls = [];
+  const f = pinnedGitFixture({ client: { async get(url) { calls.push(url); throw new Error('Branch not found'); } } });
+  const [result] = await f.updater.check('plugin', undefined, 'release');
+  assert.equal(result.status, 'error');
+  assert.deepEqual(calls, ['https://api.github.com/repos/owner/repo/branches/release']);
+  assert.throws(() => f.updater.prepare(result, true, 'release'));
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('pinned Git requires a different candidate and a consistent baseline', async () => {
+  const f = pinnedGitFixture();
+  f.setCandidate(f.baseline.toUpperCase());
+  const [current] = await f.updater.check('plugin');
+  assert.equal(current.status, 'current');
+  assert.throws(() => f.updater.prepare(current, true));
+  f.setCandidate('b'.repeat(40));
+  f.setRevision('c'.repeat(40));
+  const [conflicting] = await f.updater.check('plugin');
+  assert.throws(() => f.updater.prepare(conflicting, true));
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('mismatched lockfile identities cannot authorize a pinned Git update', async () => {
+  const pin = 'a'.repeat(40);
+  for (const specifier of [`github:owner/repo#${'b'.repeat(40)}`, `github:other/repo#${pin}`]) {
+    const lock = { importers: { '.': { dependencies: { plugin: { specifier, version: `github.com/owner/repo/${pin}` } } } } };
+    const f = pinnedGitFixture({ currentRevision: async bundle => lockedRevision(lock, bundle) ?? null });
+    const [result] = await f.updater.check('plugin');
+    assert.equal(result.status, 'unknown');
+    assert.throws(() => f.updater.prepare(result, true));
+    assert.deepEqual(f.calls, []);
+    await f.updater.dispose();
+  }
+});
+
+test('one-time Git authorization rejects forged identities and baselines', async () => {
+  const f = pinnedGitFixture();
+  const [result] = await f.updater.check('plugin');
+  const sha = 'b'.repeat(40);
+  for (const invalid of [
+    { ...result, source: { ...result.source, currentRevision: undefined } },
+    { ...result, source: { ...result.source, currentRevision: 'c'.repeat(40) } },
+    { ...result, source: { ...result.source, repository: 'attacker/repo' } },
+    { ...result, source: { ...result.source, baseSpec: 'github:attacker/repo' } },
+    { ...result, status: 'update-available', source: { ...result.source, pinned: false } },
+    { ...result, bundle: { ...result.bundle, source: 'github:owner/repo#v1.0.0' } },
+    { ...result, candidate: { ...result.candidate, revision: f.baseline, spec: `github:owner/repo#${f.baseline}` } },
+    { ...result, candidate: { ...result.candidate, revision: 'short' } },
+    { ...result, candidate: { ...result.candidate, spec: `github:attacker/repo#${sha}` } },
+    { ...result, candidate: { ...result.candidate, spec: `github:owner/repo#${'c'.repeat(40)}` } },
+  ]) assert.throws(() => f.updater.prepare(invalid, true));
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('a pinned Git tag and the updater itself cannot use one-time authorization', async () => {
+  for (const [name, ref] of [['plugin', 'v1.0.0'], ['dsh-better-plugin-updater', 'a'.repeat(40)]]) {
+    const f = pinnedGitFixture();
+    f.bundles = [{ ...f.bundles[0], name, source: `github:owner/repo#${ref}` }];
+    const [result] = await f.updater.check(name);
+    assert.throws(() => f.updater.prepare(result, true));
+    assert.equal((await createUpdaterCommand(f.updater).handler({ rawInput: `update ${name} --allow-pinned` })).kind, 'error');
+    assert.deepEqual(f.calls, []);
+    await f.updater.dispose();
+  }
+});
+
+test('temporary Git branch does not authorize a pinned tag', async () => {
+  const f = pinnedGitFixture();
+  f.bundles = [{ ...f.bundles[0], source: 'github:owner/repo#v1.0.0' }];
+  const command = createUpdaterCommand(f.updater);
+  for (const rawInput of ['update plugin --git-branch main', 'update plugin --allow-pinned --git-branch main', 'update plugin --git-branch main --accept-removal-risk']) {
+    assert.equal((await command.handler({ rawInput })).kind, 'error');
+    assert.deepEqual(f.calls, []);
+  }
+  await f.updater.dispose();
+});
+
+test('a configured tracking ref retains its existing behavior for a tagged source', async () => {
+  const f = pinnedGitFixture({ overrides: { plugin: { kind: 'github-source', repository: 'owner/repo', ref: 'main' } } });
+  f.bundles = [{ ...f.bundles[0], source: 'github:owner/repo#v1.0.0' }];
+  const [result] = await f.updater.check('plugin');
+  assert.equal(result.status, 'update-available');
+  assert.equal(result.source.pinned, false);
+  assert.equal(f.updater.prepare(result).candidate.revision, 'b'.repeat(40));
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('pinned Git commands isolate confirmations and require renewed approval for changed refs and commits', async () => {
+  const f = pinnedGitFixture();
+  const command = createUpdaterCommand(f.updater);
+  const owner = {}, other = {};
+  assert.equal((await command.handler({ rawInput: 'update plugin', agent: owner })).kind, 'error');
+  assert.equal((await command.handler({ rawInput: 'update plugin --allow-pinned --accept-removal-risk', agent: owner })).kind, 'error');
+  const first = await command.handler({ rawInput: 'update plugin --allow-pinned --git-branch main', agent: owner });
+  assert.equal(first.kind, 'success');
+  assert.ok(first.text.includes(`github:owner/repo#${'b'.repeat(40)}`));
+  assert.match(first.text, /Tracked Git ref: main/);
+  assert.match(first.text, /not necessarily newer/);
+  assert.equal((await command.handler({ rawInput: 'ok', agent: other })).kind, 'error');
+  const branch = await command.handler({ rawInput: 'update plugin --allow-pinned --git-branch release', agent: owner });
+  assert.equal(branch.kind, 'success');
+  assert.deepEqual(f.calls, []);
+  f.setCandidate('c'.repeat(40));
+  const changed = await command.handler({ rawInput: 'ok', agent: owner });
+  assert.equal(changed.kind, 'success');
+  assert.ok(changed.text.includes(`github:owner/repo#${'c'.repeat(40)}`));
+  assert.match(f.requests.at(-1), /\/branches\/release$/);
+  assert.deepEqual(f.calls, []);
+  assert.equal((await command.handler({ rawInput: 'ok', agent: owner })).kind, 'success');
+  assert.deepEqual(f.calls.map(call => call[0]), ['remove', 'install']);
+  assert.equal(f.calls[1][1], `github:owner/repo#${'c'.repeat(40)}`);
+  f.setCandidate('d'.repeat(40));
+  assert.equal((await command.handler({ rawInput: 'update plugin', agent: owner })).kind, 'error');
+  assert.deepEqual(f.calls.map(call => call[0]), ['remove', 'install']);
+  await f.updater.dispose();
+});
+
+test('changing the configured Git ref invalidates a pending confirmation', async () => {
+  const overrides = { plugin: { kind: 'github-source', repository: 'owner/repo', ref: 'main' } };
+  const f = pinnedGitFixture({ overrides });
+  const command = createUpdaterCommand(f.updater), agent = {};
+  assert.equal((await command.handler({ rawInput: 'update plugin --allow-pinned', agent })).kind, 'success');
+  overrides.plugin.ref = 'release';
+  assert.equal((await command.handler({ rawInput: 'ok', agent })).kind, 'success');
+  assert.match(f.requests.at(-1), /\/commits\/release$/);
+  assert.deepEqual(f.calls, []);
+  assert.equal((await command.handler({ rawInput: 'ok', agent })).kind, 'success');
+  assert.deepEqual(f.calls.map(call => call[0]), ['remove', 'install']);
+  await f.updater.dispose();
+});
+
+test('a changed pinned Git baseline cannot use a pending confirmation', async () => {
+  const f = pinnedGitFixture();
+  const command = createUpdaterCommand(f.updater), agent = {};
+  assert.equal((await command.handler({ rawInput: 'update plugin --allow-pinned', agent })).kind, 'success');
+  f.setRevision('c'.repeat(40));
+  await command.handler({ rawInput: 'ok', agent });
+  assert.deepEqual(f.calls, []);
+  await f.updater.dispose();
+});
+
+test('batch authorization keeps mixed source targets exact and scoped to its confirmation', async () => {
+  const baseline = 'a'.repeat(40), next = 'b'.repeat(40);
+  let bundles = [
+    { name: 'git-one', source: `github:owner/one#${baseline}` },
+    { name: 'git-two', source: `github:owner/two#${baseline}` },
+    { name: 'npm-plugin', source: 'npm-plugin@^1.0.0' },
+  ].map(bundle => ({ ...bundle, version: '1.0.0', enabled: true, installed: true, removable: true, availability: 'profile' }));
+  const calls = [];
+  const manager = {
+    async listBundles() { return structuredClone(bundles); },
+    async registries() { return { resolved: 'https://registry.test/' }; },
+    async removeBundle(name) { calls.push(['remove', name]); bundles = bundles.filter(bundle => bundle.name !== name); return { application: 'applied' }; },
+    async installBundle(spec, settings) {
+      calls.push(['install', spec]);
+      const name = spec.includes('/one#') ? 'git-one' : spec.includes('/two#') ? 'git-two' : 'npm-plugin';
+      bundles.push({ name, source: spec, version: name === 'npm-plugin' ? '2.0.0' : '1.0.0', enabled: settings.enabled, installed: true, removable: true, availability: 'profile' });
+      return { application: 'applied', bundle: name };
+    },
+  };
+  const client = { async get(url) {
+    if (url.startsWith('https://registry.test/')) return { name: 'npm-plugin', 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name: 'npm-plugin', version: '2.0.0', dsh: { bundle: {} } } } };
+    return { sha: next, commit: { sha: next } };
+  } };
+  const updater = new Updater({ manager, client, providers: createProviders(), currentRevision: async bundle => bundle.source.split('#')[1] });
+  const command = createUpdaterCommand(updater), owner = {}, other = {};
+  const preview = await command.handler({ rawInput: 'update * --allow-pinned --git-branch main', agent: owner });
+  assert.equal(preview.kind, 'success');
+  for (const spec of [`github:owner/one#${next}`, `github:owner/two#${next}`, 'npm-plugin@2.0.0']) assert.ok(preview.text.includes(spec));
+  assert.equal((await command.handler({ rawInput: 'ok', agent: other })).kind, 'error');
+  assert.deepEqual(calls, []);
+  assert.equal((await command.handler({ rawInput: 'confirm', agent: owner })).kind, 'success');
+  assert.deepEqual(calls.filter(call => call[0] === 'install').map(call => call[1]).sort(), [`github:owner/one#${next}`, `github:owner/two#${next}`, 'npm-plugin@2.0.0'].sort());
+  await updater.dispose();
+});
+
+test('pinned Git installation failure retains an exact recovery target', async () => {
+  const f = pinnedGitFixture();
+  const [checked] = await f.updater.check('plugin');
+  const plan = f.updater.prepare(checked, true);
+  f.manager.installBundle = async (spec, settings) => { f.calls.push(['install', spec, settings]); return { application: 'failed' }; };
+  const result = await f.updater.apply(plan.id, true);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.recovery.spec, `github:owner/repo#${f.baseline}`);
+  assert.equal(f.calls[1][1], `github:owner/repo#${'b'.repeat(40)}`);
+  await f.updater.dispose();
+});
+
+test('a different Git repository is never reported as the confirmed installation', async () => {
+  const f = pinnedGitFixture();
+  const original = f.bundles[0];
+  const [checked] = await f.updater.check('plugin');
+  const plan = f.updater.prepare(checked, true);
+  f.manager.installBundle = async (_spec, settings) => {
+    f.setRevision('b'.repeat(40));
+    f.bundles = [{ ...original, source: `github:attacker/repo#${'b'.repeat(40)}`, enabled: settings.enabled }];
+    return { application: 'applied', bundle: 'plugin' };
+  };
+  const result = await f.updater.apply(plan.id, true);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.recovery.spec, `github:owner/repo#${f.baseline}`);
+  await f.updater.dispose();
+});
+
+test('the read-only tool cannot authorize or apply a pinned Git update', async () => {
+  const f = pinnedGitFixture();
+  const tool = createUpdaterTool(f.updater), signal = new AbortController().signal;
+  const checked = JSON.parse(await tool.execute({ action: 'check', target: 'plugin' }, { signal }));
+  assert.equal(checked[0].status, 'pinned');
+  for (const args of [
+    { action: 'update', target: 'plugin' },
+    { action: 'check', target: 'plugin', allowPinned: true },
+    { action: 'check', target: 'plugin', gitBranch: 'main' },
+  ]) await assert.rejects(tool.execute(args, { signal }));
   assert.deepEqual(f.calls, []);
   await f.updater.dispose();
 });

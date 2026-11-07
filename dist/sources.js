@@ -102,13 +102,20 @@ export function inferSource(bundle, context) {
             return unsupported('msg.sourceKind');
         if (override && override.repository.toLowerCase() !== git.repository.toLowerCase())
             return unsupported('msg.repositoryMismatch');
-        const ref = override?.ref ?? git.ref;
+        const exactPin = SHA.test(git.ref);
+        const ref = context.gitBranch ?? override?.ref ?? (exactPin ? 'HEAD' : git.ref);
         if (!ref || /[\s&\x00-\x1f]/.test(ref) || ref.startsWith('semver:') || ref.startsWith('path:'))
             return unsupported('msg.gitSelector');
-        const revision = context.currentRevision ?? (SHA.test(git.ref) ? git.ref.toLowerCase() : undefined);
+        const locked = context.currentRevision;
+        const revision = exactPin
+            ? locked !== undefined && (locked === null || !SHA.test(locked) || locked.toLowerCase() !== git.ref.toLowerCase()) ? undefined : git.ref.toLowerCase()
+            : locked ?? undefined;
+        const pinned = exactPin || (context.gitBranch === undefined
+            ? SHA.test(ref) || valid(ref.replace(/^v/, '')) !== null
+            : valid(git.ref.replace(/^v/, '')) !== null);
         return { kind: 'github-source', ...git, ref,
             ...(revision === undefined ? {} : { currentRevision: revision }),
-            pinned: !override?.allowPinned && (SHA.test(ref) || valid(ref.replace(/^v/, '')) !== null) };
+            pinned: !override?.allowPinned && pinned };
     }
     if (override && override.kind !== 'npm')
         return unsupported('msg.githubOverride');

@@ -60,13 +60,15 @@ function checkLines(result, language) {
     }
     if (source.kind === 'github-source' && candidate?.revision) {
         version += source.currentRevision === candidate.revision ? t(language, 'ui.commit', { revision: shortRevision(candidate.revision) })
-            : result.status === 'update-available' ? t(language, 'ui.commitChange', {
+            : (result.status === 'update-available' || (result.status === 'pinned' && source.currentRevision)) ? t(language, 'ui.commitChange', {
                 current: source.currentRevision ? shortRevision(source.currentRevision) : t(language, 'ui.unknown'), target: shortRevision(candidate.revision),
             }) : t(language, 'ui.offeredCommit', { revision: shortRevision(candidate.revision) });
     }
     const lines = [`- ${inline(bundle.name)}: ${version}`, `  ${inline(translate(result.detail, result.message, language))}`];
     if (source.kind !== 'unsupported')
         lines.push(`  ${t(language, 'ui.source', { source: providerLabel(source, language) })}`);
+    if (source.kind === 'github-source')
+        lines.push(`  ${source.ref === 'HEAD' ? t(language, 'ui.gitDefaultRef') : t(language, 'ui.gitRef', { ref: inline(source.ref) })}`);
     if (isActionable(result))
         lines.push(`  ${t(language, 'ui.planHint', { name: inline(bundle.name) })}`);
     return lines;
@@ -112,6 +114,9 @@ export function formatApply(result, language = 'en') {
     const title = t(language, result.status === 'updated' ? 'ui.apply.updated' : result.status === 'restart-required' ? 'ui.apply.restart' : 'ui.apply.failed');
     const lines = [title, '', inline(translate(result.detail, result.message, language)),
         ...stageLines('ui.apply.removal', result.removal, language), ...stageLines('ui.apply.installation', result.installation, language)];
+    if (result.diagnostic)
+        for (const line of result.diagnostic.split(/\r?\n/).filter(line => line.trim() !== ''))
+            lines.push('', `  ${inline(line)}`);
     if (result.remaining) {
         const bundle = result.remaining;
         const state = t(language, !bundle.installed ? 'ui.notInstalled' : bundle.availability === 'missing' ? 'ui.missing' : bundle.enabled ? 'ui.enabled' : 'ui.disabled');
@@ -132,8 +137,8 @@ export function formatUsage(language = 'en') {
     return [t(language, 'ui.help.title'), '',
         `/plugin-updater                  ${t(language, 'ui.help.list')}`,
         `/plugin-updater list             ${t(language, 'ui.help.list')}`,
-        `/plugin-updater check [package]  ${t(language, 'ui.help.check')}`,
-        `/plugin-updater update <package ...> [--allow-pinned | --accept-removal-risk]   ${t(language, 'ui.help.update')}`,
+        `/plugin-updater check [package] [--git-branch branch]  ${t(language, 'ui.help.check')}`,
+        `/plugin-updater update <package ...> [--allow-pinned | --accept-removal-risk] [--git-branch branch]   ${t(language, 'ui.help.update')}`,
         '/plugin-updater ok | confirm',
         `/plugin-updater help             ${t(language, 'ui.help.help')}`, '', t(language, 'ui.help.language'), '', t(language, 'ui.help.risk')].join('\n');
 }

@@ -65,6 +65,9 @@ test('GitHub compares commits, not package versions, and preserves Git transport
   assert.equal((await providers['github-source'].check(bundle, { ...source, currentRevision: undefined }, client({ sha }))).status, 'unknown');
   assert.equal((await providers['github-source'].check(bundle, { ...source, pinned: true }, client({ sha }))).status, 'pinned');
   await assert.rejects(providers['github-source'].check(bundle, source, client({ sha: 'short' })));
+  await assert.rejects(providers['github-source'].check(bundle, { ...source, ref: sha }, client({ sha: 'c'.repeat(40) })));
+  const branch = await providers['github-source'].check(bundle, { ...source, ref: 'main' }, client({ sha: 'c'.repeat(40), commit: { sha } }), undefined, 'main');
+  assert.equal(branch.candidate.revision, sha);
 });
 
 const releaseSource = { kind: 'github-release', repository: 'owner/repo', assetTemplate: 'plugin-{tag}.tgz', pinned: false };

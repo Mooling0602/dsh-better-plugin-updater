@@ -1,3 +1,4 @@
+import type { PrewarmOptions } from './prewarm.js';
 import type { ApplyResult, CheckResult, InstalledBundle, JsonClient, PluginManager, SourceOverride, UpdatePlan, UpdateProvider } from './types.js';
 /** Dependencies and policy injected by the Cordis adapter or isolated tests. */
 export interface UpdaterOptions {
@@ -5,10 +6,14 @@ export interface UpdaterOptions {
     readonly client: JsonClient;
     readonly providers: readonly UpdateProvider[];
     readonly overrides?: Readonly<Record<string, SourceOverride>>;
-    readonly currentRevision?: (bundle: InstalledBundle) => Promise<string | undefined>;
+    readonly currentRevision?: (bundle: InstalledBundle) => Promise<string | null | undefined>;
     /** A fixed lifetime, or a reader evaluated per plan so a saved setting applies at once. */
     readonly planTtlMs?: number | (() => number);
     readonly now?: () => number;
+    /** Package-manager facts for staging a registry target; omitted means staging is skipped. */
+    readonly prewarm?: PrewarmOptions & {
+        readonly profileDir: string;
+    };
 }
 /** Identify the active executor, which can be checked but cannot update itself. */
 export declare function isSelfBundle(bundle: Pick<InstalledBundle, 'name'>): boolean;
@@ -18,6 +23,8 @@ export declare function isActionable(result: CheckResult | undefined, allowPinne
 export declare class Updater {
     private readonly options;
     private readonly plans;
+    private readonly planOverrides;
+    private readonly checks;
     private readonly abort;
     private readonly active;
     private applying;
@@ -29,14 +36,15 @@ export declare class Updater {
     /** Read only the public bundle facts, without UI metadata or unrelated profile data. */
     list(): Promise<InstalledBundle[]>;
     /** Check one or all bundles sequentially, bounding traffic and isolating per-package failures. */
-    check(name?: string, signal?: AbortSignal): Promise<CheckResult[]>;
+    check(name?: string, signal?: AbortSignal, gitBranch?: string): Promise<CheckResult[]>;
     private source;
     private checkInternal;
-    /** Freeze a checked target, with optional one-time authorization for a pinned npm package. */
-    prepare(result: CheckResult | undefined, allowPinned?: boolean): UpdatePlan;
+    /** Freeze a checked target, with optional one-time authorization for an eligible pin. */
+    prepare(result: CheckResult | undefined, allowPinned?: boolean, gitBranch?: string): UpdatePlan;
     /** Execute one saved plan only after explicit acknowledgement; never approve dependency scripts or compatibility exemptions. */
     apply(id: string, acceptRemovalRisk: boolean): Promise<ApplyResult>;
     private applyInternal;
+    private stage;
     private recovery;
     private observe;
     private track;

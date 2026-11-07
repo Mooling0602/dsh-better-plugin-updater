@@ -8,6 +8,12 @@ function patternExpression(pattern) {
         throw new Error(`Invalid package pattern: ${pattern}`);
     return new RegExp('^' + [...pattern].map(c => c === '*' ? '.*' : c === '?' ? '.' : c.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')).join('') + '$');
 }
+function isGitBranch(value) {
+    return value.length <= 255 && value !== '@' && !value.startsWith('-') && !value.startsWith('/')
+        && !value.endsWith('/') && !value.endsWith('.') && !value.includes('..') && !value.includes('//')
+        && !value.includes('@{') && !/[\x00-\x20\x7f~^:?*\[\\]/.test(value)
+        && value.split('/').every(part => part !== '' && !part.startsWith('.') && !part.endsWith('.lock'));
+}
 function snapshot(results, unmatched) {
     return JSON.stringify({ unmatched, results: results.map(r => ({ bundle: r.bundle, source: r.source, status: r.status, candidate: r.candidate })) });
 }
@@ -25,7 +31,7 @@ export function createUpdaterCommand(updater, options = {}) {
         }
     };
     const initialLanguage = defaultLanguage();
-    async function inspect(patterns, signal) {
+    async function inspect(patterns, signal, gitBranch) {
         const bundles = (await updater.list()).filter(b => b.installed);
         const matches = new Map();
         const unmatched = [];
@@ -39,7 +45,7 @@ export function createUpdaterCommand(updater, options = {}) {
         }
         const results = [];
         for (const name of [...matches.keys()].sort())
-            results.push(...await updater.check(name, signal));
+            results.push(...await updater.check(name, signal, gitBranch));
         return { results, unmatched };
     }
     function describe(results, unmatched, language) {
@@ -91,14 +97,25 @@ export function createUpdaterCommand(updater, options = {}) {
             else
                 language = defaultLanguage(clientLanguage);
             const [action = 'list', ...args] = tokens;
+            const branchFlags = args.flatMap((token, index) => token === '--git-branch' ? [index] : []);
+            let requestedBranch;
+            if (branchFlags.length) {
+                const index = branchFlags[0];
+                const value = args[index + 1];
+                if (branchFlags.length !== 1 || (action !== 'check' && action !== 'update') || !value || !isGitBranch(value)) {
+                    return { kind: 'error', text: formatUsage(language) };
+                }
+                requestedBranch = value;
+                args.splice(index, 2);
+            }
             const owner = agent ?? fallbackAgent;
             try {
                 if (action === 'list' && !args.length)
                     return { kind: 'success', text: formatInventory(await updater.list(), language) };
                 if (action === 'help' && !args.length)
                     return { kind: 'success', text: formatUsage(language) };
-                if (action === 'check' && args.length <= 1)
-                    return { kind: 'success', text: formatChecks(await updater.check(args[0], signal), language) };
+                if (action === 'check' && args.length <= 1 && !args.some(arg => arg.startsWith('--')))
+                    return { kind: 'success', text: formatChecks(await updater.check(args[0], signal, requestedBranch), language) };
                 if (!['update', 'ok', 'confirm'].includes(action))
                     return { kind: 'error', text: formatUsage(language) };
                 if (busy)
@@ -113,14 +130,15 @@ export function createUpdaterCommand(updater, options = {}) {
                     if (args.filter(a => a === '--accept-removal-risk').length > 1 || args.filter(a => a === '--allow-pinned').length > 1
                         || args.some(a => a.startsWith('--') && a !== '--accept-removal-risk' && a !== '--allow-pinned'))
                         return { kind: 'error', text: formatUsage(language) };
-                    if (accept && explicitAllowPinned)
-                        return { kind: 'error', text: phrase(language, '--allow-pinned requires confirmation and cannot be combined with --accept-removal-risk.', '--allow-pinned 需要二次确认，不能与 --accept-removal-risk 同时使用。') };
+                    if (accept && (explicitAllowPinned || requestedBranch !== undefined))
+                        return { kind: 'error', text: phrase(language, '--allow-pinned and --git-branch require confirmation and cannot be combined with --accept-removal-risk.', '--allow-pinned 和 --git-branch 需要二次确认，不能与 --accept-removal-risk 同时使用。') };
                     const previous = pending.get(owner);
                     const allowPinned = confirming ? previous?.allowPinned ?? false : explicitAllowPinned;
+                    const gitBranch = confirming ? previous?.gitBranch : requestedBranch;
                     const patterns = confirming ? previous?.patterns : args.filter(a => a !== '--accept-removal-risk' && a !== '--allow-pinned');
                     if (!patterns?.length)
                         throw new Error(phrase(language, confirming ? 'No pending confirmation.' : 'Specify at least one package.', confirming ? '没有待确认的更新。' : '请至少指定一个插件包。'));
-                    const { results, unmatched } = await inspect(patterns, signal);
+                    const { results, unmatched } = await inspect(patterns, signal, gitBranch);
                     const current = snapshot(results, unmatched);
                     const available = results.filter(result => isActionable(result, allowPinned));
                     if (!available.length) {
@@ -128,17 +146,18 @@ export function createUpdaterCommand(updater, options = {}) {
                         return { kind: 'error', text: describe(results, unmatched, language) };
                     }
                     const same = previous && previous.expires > Date.now() && previous.allowPinned === allowPinned
-                        && JSON.stringify(previous.patterns) === JSON.stringify(patterns) && previous.snapshot === current;
+                        && previous.gitBranch === gitBranch && JSON.stringify(previous.patterns) === JSON.stringify(patterns) && previous.snapshot === current;
                     if (accept || (same && (confirming || action === 'update'))) {
                         pending.delete(owner);
-                        const plans = same && !accept ? previous.plans : available.map(r => updater.prepare(r, allowPinned));
+                        const plans = same && !accept ? previous.plans : available.map(r => updater.prepare(r, allowPinned, gitBranch));
                         const outcome = await execute(plans, language);
                         return { kind: outcome.kind, text: describe(results, unmatched, language) + '\n\n' + outcome.text };
                     }
-                    const plans = available.map(r => updater.prepare(r, allowPinned));
-                    pending.set(owner, { patterns: [...patterns], allowPinned, snapshot: current, plans, expires: Math.min(...plans.map(p => Date.parse(p.expiresAt))) });
-                    const pinnedNotice = available.some(result => result.status === 'pinned') ? '\n\n' + phrase(language, 'Pinned npm packages are authorized for this update only; the installed target remains pinned.', '已固定的 npm 插件仅获准本次更新；安装后的目标仍会固定版本。') : '';
-                    return { kind: 'success', text: describe(results, unmatched, language) + '\n\n' + exactTargets(plans, language) + pinnedNotice + '\n\n' + phrase(language, 'Update is non-atomic; the old package may be removed and manual recovery may be needed. Repeat the same update command or run /plugin-updater ok or /plugin-updater confirm to proceed.', '更新不是原子操作，旧插件可能被移除，失败时可能需要人工恢复。请再次执行相同的 update 命令，或执行 /plugin-updater ok 或 /plugin-updater confirm 以确认。') };
+                    const plans = available.map(r => updater.prepare(r, allowPinned, gitBranch));
+                    pending.set(owner, { patterns: [...patterns], allowPinned, ...(gitBranch === undefined ? {} : { gitBranch }), snapshot: current, plans, expires: Math.min(...plans.map(p => Date.parse(p.expiresAt))) });
+                    const pinnedNotice = available.some(result => result.status === 'pinned') ? '\n\n' + phrase(language, 'Pinned packages are authorized for this update only; the installed target remains pinned.', '已固定的插件仅获准本次更新；安装后的目标仍会固定。') : '';
+                    const gitNotice = available.some(result => result.source.kind === 'github-source') ? '\n\n' + phrase(language, 'A different Git commit is not necessarily newer and may not contain the installed commit. Review the tracked ref and exact target.', '不同的 Git 提交不一定更新，也可能不包含已安装的提交。请核对跟踪引用和精确目标。') : '';
+                    return { kind: 'success', text: describe(results, unmatched, language) + '\n\n' + exactTargets(plans, language) + pinnedNotice + gitNotice + '\n\n' + phrase(language, 'Update is non-atomic; the old package may be removed and manual recovery may be needed. Repeat the same update command or run /plugin-updater ok or /plugin-updater confirm to proceed.', '更新不是原子操作，旧插件可能被移除，失败时可能需要人工恢复。请再次执行相同的 update 命令，或执行 /plugin-updater ok 或 /plugin-updater confirm 以确认。') };
                 }
                 finally {
                     busy = false;

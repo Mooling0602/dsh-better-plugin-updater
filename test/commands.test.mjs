@@ -70,6 +70,19 @@ test('removed plan action is rejected by commands and the tool without writes', 
   assert.equal(f.calls.filter(c => c[0] === 'apply').length, 0);
 });
 
+test('malformed Git branch flags never reach an update', async () => {
+  const f = fixture();
+  for (const rawInput of [
+    'update plugin-a --allow-pinned --git-branch',
+    'update plugin-a --git-branch --allow-pinned',
+    'update plugin-a --git-branch main --git-branch release',
+    'update plugin-a --allow-pinned --git-branch main --accept-removal-risk',
+  ]) {
+    assert.equal((await f.command.handler({ rawInput })).kind, 'error', rawInput);
+    assert.equal(f.calls.some(call => call[0] === 'apply'), false);
+  }
+});
+
 test('a second confirmation cannot race an in-flight update', async () => {
   const f = fixture(), agent = {};
   let release, entered;

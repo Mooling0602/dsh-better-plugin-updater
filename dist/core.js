@@ -5,4 +5,5 @@ export { createProviders } from './providers/index.js';
 export { createJsonClient } from './http.js';
 export { inferSource, githubRepository, releaseAttachment, normalizeRegistry } from './sources.js';
 export { lockedRevision, readLockedRevision } from './lockfile.js';
+export { isPrewarmable, prewarm } from './prewarm.js';
 //# sourceMappingURL=core.js.map

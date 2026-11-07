@@ -68,13 +68,15 @@ The same checks are available to the agent as the read-only `plugin_updates` too
 | A GitHub release | The highest version tag, prereleases included. GitHub's "latest" marker is ignored. |
 | A local folder, or anything else | Reported as unsupported rather than guessed at. |
 
-Fixed npm versions are checked for newer versions but remain protected from updates. Use `/plugin-updater update foo --allow-pinned` to authorize one update and confirm it normally, or set `allowPinned` in the configuration for ongoing authorization. The one-time option cannot be combined with `--accept-removal-risk`, and the newly installed version remains pinned. Pinned Git commits remain protected; configure `allowPinned` or the Git ref to follow. See [configuration](#configuration).
+Fixed npm versions and GitHub source commits remain protected from updates. Use `/plugin-updater update foo --allow-pinned` to authorize one update and confirm it normally, or set `allowPinned` in the configuration for ongoing authorization. A fixed Git commit is compared with the repository's default branch unless `sources.foo.ref` selects a ref. Use `/plugin-updater update foo --allow-pinned --git-branch feature/name` to select a branch for one operation. With several packages, the branch applies to each GitHub source package. The selected branch may not contain the installed commit, so review the exact target before confirming. `--allow-pinned` and `--git-branch` cannot be combined with `--accept-removal-risk`, and the newly installed target remains pinned. See [configuration](#configuration).
 
 DSH's own bundles and protected packages are skipped. This plugin can check its own supported installation source, but it cannot update itself. Use an external method appropriate for its source. A local linked installation is not supported by the update checker.
 
 ## Risks
 
 **An update is not atomic.** The old package is removed before the new one is installed. If the install then fails, or the package needs a build script you have not approved, the package can be left missing. A recovery target is printed whenever one is known, but recovery is manual and there is no automatic rollback.
+
+For a package from an npm registry, the new version and its dependencies are downloaded before the old package is removed, so the installation itself needs no network. If that download fails, the update stops and the installed package stays as it is. GitHub sources and release tarballs are not downloaded in advance, so those updates still need a network connection when the installation runs.
 
 This plugin never approves build scripts and never grants a compatibility exemption for you.
 

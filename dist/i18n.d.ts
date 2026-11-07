@@ -49,6 +49,8 @@ export declare const dictionaries: {
         readonly 'ui.offeredCommit': "; offered commit {revision}";
         readonly 'ui.unknown': "unknown";
         readonly 'ui.source': "Source: {source}";
+        readonly 'ui.gitRef': "Tracked Git ref: {ref}";
+        readonly 'ui.gitDefaultRef': "Tracked Git ref: HEAD (repository default branch)";
         readonly 'ui.planHint': "Update: /plugin-updater update {name}";
         readonly 'ui.check.empty': "No plugin bundles to check in this profile.";
         readonly 'ui.check.summary': "Checked {count} plugin bundle(s).";
@@ -78,7 +80,7 @@ export declare const dictionaries: {
         readonly 'ui.help.language': "Choose this command's language with --lang en or --lang zh.";
         readonly 'ui.help.risk': "Updates may remove the old package before installation. There is no automatic rollback.";
         readonly 'ui.command.description': "Check and explicitly update profile plugin bundles.";
-        readonly 'ui.command.hint': "[--lang en|zh] list | check [package] | update <package ...> [--allow-pinned | --accept-removal-risk] | ok | confirm | help";
+        readonly 'ui.command.hint': "[--lang en|zh] list | check [package] [--git-branch branch] | update <package ...> [--allow-pinned | --accept-removal-risk] [--git-branch branch] | ok | confirm | help";
         readonly 'ui.error.title': "Operation could not be completed.";
         readonly 'ui.error.help': "For available commands: /plugin-updater help";
         readonly 'msg.versionPinned': "This installation is pinned; explicitly opt in before changing it.";
@@ -89,6 +91,7 @@ export declare const dictionaries: {
         readonly 'msg.versionCurrent': "No newer version was offered; downgrades are not proposed.";
         readonly 'msg.prerelease': "Prerelease channels are not enabled in this version.";
         readonly 'msg.gitPinned': "This Git ref is pinned.";
+        readonly 'msg.gitPinnedUpdate': "The tracked ref resolves to a different commit, but this installation is pinned. Use --allow-pinned for one update, or configure sources[{name}].allowPinned.";
         readonly 'msg.gitUnknown': "The installed Git revision is unavailable; no update is inferred from the package version.";
         readonly 'msg.gitCurrent': "The installed commit matches the tracked ref.";
         readonly 'msg.gitUpdate': "The tracked ref resolves to a different commit.";
@@ -111,6 +114,9 @@ export declare const dictionaries: {
         readonly 'msg.protected': "The host protects this bundle from removal.";
         readonly 'msg.broken': "Repair the existing bundle error before updating.";
         readonly 'msg.checkFailed': "Source check failed.";
+        readonly 'msg.prewarmFailed': "The new package could not be staged for installation, so the installed one was left in place.";
+        readonly 'msg.prewarmStore': "The package store directory for this profile could not be determined, so the new package was not staged.";
+        readonly 'msg.prewarmUnsupported': "This source cannot be staged; installation still needs a network.";
         readonly 'msg.removalFailed': "Removal did not complete; installation was not started.";
         readonly 'msg.installed': "The target is installed; check the activation status and any restart requirement.";
         readonly 'msg.unexpectedState': "The update did not reach the expected installed state. Inspect the stage results; recovery is manual.";
@@ -200,6 +206,8 @@ export declare const dictionaries: {
         'ui.offeredCommit': string;
         'ui.unknown': string;
         'ui.source': string;
+        'ui.gitRef': string;
+        'ui.gitDefaultRef': string;
         'ui.planHint': string;
         'ui.check.empty': string;
         'ui.check.summary': string;
@@ -240,6 +248,7 @@ export declare const dictionaries: {
         'msg.versionCurrent': string;
         'msg.prerelease': string;
         'msg.gitPinned': string;
+        'msg.gitPinnedUpdate': string;
         'msg.gitUnknown': string;
         'msg.gitCurrent': string;
         'msg.gitUpdate': string;
@@ -262,6 +271,9 @@ export declare const dictionaries: {
         'msg.protected': string;
         'msg.broken': string;
         'msg.checkFailed': string;
+        'msg.prewarmFailed': string;
+        'msg.prewarmStore': string;
+        'msg.prewarmUnsupported': string;
         'msg.removalFailed': string;
         'msg.installed': string;
         'msg.unexpectedState': string;

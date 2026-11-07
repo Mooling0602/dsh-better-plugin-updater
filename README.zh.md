@@ -68,13 +68,15 @@ dsh plugin --profile web remove dsh-better-plugin-updater
 | GitHub release | 最高的版本标签，包含预发布版本。忽略 GitHub 的 `latest` 标记。 |
 | 本地目录或其他来源 | 报告为不支持，而不是猜测。 |
 
-固定版本的 npm 插件会检查是否有新版本，但仍受保护，不会直接更新。使用 `/plugin-updater update foo --allow-pinned` 可临时允许本次更新，仍需正常确认；也可以在配置中设置 `allowPinned` 持续允许更新。临时选项不能与 `--accept-removal-risk` 同时使用，安装后的版本仍会固定。固定的 Git 提交也受保护，可设置 `allowPinned` 或指定要跟随的 Git ref。见[配置](#配置)。
+固定版本的 npm 插件和固定提交的 GitHub 源码插件仍受更新保护。使用 `/plugin-updater update foo --allow-pinned` 可临时允许本次更新，仍需正常确认；也可以在配置中设置 `allowPinned` 持续允许更新。固定的 Git 提交默认与仓库默认分支比较，也可通过 `sources.foo.ref` 指定引用。使用 `/plugin-updater update foo --allow-pinned --git-branch feature/name` 可临时指定分支；批量操作时，该分支适用于所有选中的 GitHub 源码插件。选定分支不一定包含已安装的提交，请确认前核对精确目标。`--allow-pinned` 和 `--git-branch` 均不能与 `--accept-removal-risk` 同时使用，安装后的目标仍会固定。见[配置](#配置)。
 
 DSH 自带的插件包和受保护的包会被跳过。本插件可以检查自身受支持的安装来源，但不能自行更新；请根据安装来源使用外部方式更新。本地链接安装不受更新检查器支持。
 
 ## 风险
 
 **更新不是原子操作。** 安装新版本之前会先移除旧包。如果随后安装失败，或者该包需要你尚未批准的构建脚本，这个包就可能缺失了。只要已知恢复目标就会打印出来，但恢复需要人工完成，没有自动回滚。
+
+来自 npm registry 的包会在移除旧包之前先下载新版本及其依赖，因此安装阶段不再需要网络。如果下载失败，更新会中止，已安装的包保持不变。GitHub 来源和 release tarball 不会提前下载，这类更新在安装阶段仍然需要网络。
 
 本插件不会替你批准构建脚本，也不会替你授予兼容性豁免。
 

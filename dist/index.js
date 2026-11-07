@@ -23,7 +23,10 @@ export function apply(ctx, rawConfig = {}) {
         client: createJsonClient({ timeoutMs: () => config.requestTimeoutMs.get(), maxBytes: () => config.maxMetadataBytes.get(),
             resolveGithubToken: () => resolveGithubToken(config.githubTokenEnv.get(), ctx.get('credentials')) }),
         providers: createProviders(), overrides: config.sources, planTtlMs: () => config.planTtlMs.get(),
-        currentRevision: bundle => readLockedRevision(profile.dir, bundle) });
+        currentRevision: bundle => readLockedRevision(profile.dir, bundle),
+        prewarm: { profileDir: profile.dir, ...(profile.packageManager === undefined ? {} : {
+                command: profile.packageManager.command, args: profile.packageManager.args, env: profile.packageManager.env
+            }) } });
     ctx.provide('betterPluginUpdater', updater);
     ctx.effect(() => () => updater.dispose());
     ctx.effect(() => commands.register(createUpdaterCommand(updater, {

@@ -2,7 +2,7 @@
 import { gt, prerelease, valid } from 'semver';
 import { UpdaterError } from '../errors.js';
 import { message } from '../i18n.js';
-import { releaseAttachment } from '../sources.js';
+import { githubRepository, releaseAttachment } from '../sources.js';
 function object(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value))
         throw new UpdaterError('error.metadataObject');
@@ -60,22 +60,28 @@ const npm = {
 };
 const githubSource = {
     kind: 'github-source',
-    async check(_bundle, source, client, signal) {
-        if (source.kind !== 'github-source')
+    async check(_bundle, source, client, signal, gitBranch) {
+        if (source.kind !== 'github-source' || (gitBranch !== undefined && gitBranch !== source.ref))
             throw new UpdaterError('error.gitSource');
-        const data = object(await client.get(`https://api.github.com/repos/${repository(source.repository)}/commits/${encodeURIComponent(source.ref)}`, signal));
-        const revision = text(data.sha).toLowerCase();
-        if (!/^[a-f0-9]{40}$/.test(revision))
+        const endpoint = gitBranch === undefined ? 'commits' : 'branches';
+        const data = object(await client.get(`https://api.github.com/repos/${repository(source.repository)}/${endpoint}/${encodeURIComponent(source.ref)}`, signal));
+        const revision = text(gitBranch === undefined ? data.sha : object(data.commit).sha).toLowerCase();
+        if (!/^[a-f0-9]{40}$/.test(revision)
+            || (gitBranch === undefined && /^[a-f0-9]{40}$/i.test(source.ref) && source.ref.toLowerCase() !== revision))
             throw new UpdaterError('error.gitSha');
         const candidate = { spec: `${source.baseSpec}#${revision}`, revision };
-        if (source.pinned)
+        const installed = _bundle.source && githubRepository(_bundle.source);
+        if (source.pinned && (!installed || !/^[a-f0-9]{40}$/i.test(installed.ref))) {
             return { status: 'pinned', ...message('msg.gitPinned'), candidate };
+        }
         if (!source.currentRevision || !/^[a-f0-9]{40}$/i.test(source.currentRevision)) {
             return { status: 'unknown', ...message('msg.gitUnknown'), candidate };
         }
-        return source.currentRevision.toLowerCase() === revision
-            ? { status: 'current', ...message('msg.gitCurrent'), candidate }
-            : { status: 'update-available', ...message('msg.gitUpdate'), candidate };
+        if (source.currentRevision.toLowerCase() === revision)
+            return { status: 'current', ...message('msg.gitCurrent'), candidate };
+        if (source.pinned)
+            return { status: 'pinned', ...message('msg.gitPinnedUpdate', { name: _bundle.name }), candidate };
+        return { status: 'update-available', ...message('msg.gitUpdate'), candidate };
     },
 };
 const githubRelease = {

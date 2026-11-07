@@ -42,7 +42,11 @@ export function lockedRevision(value, bundle) {
     return repo?.repository.toLowerCase() === source.repository.toLowerCase() && typeof resolution?.commit === 'string'
         && /^[a-f0-9]{40}$/i.test(resolution.commit) ? resolution.commit.toLowerCase() : undefined;
 }
-/** Read at most 4 MiB plus one sentinel byte. Missing or unfamiliar lockfiles yield an unknown baseline. */
+/**
+ * Read the root lock entry, at most 4 MiB plus one sentinel byte.
+ *
+ * The three outcomes are distinct on purpose. undefined means no lockfile, so an exact source SHA may still establish the baseline. null means a file that exists but is unreadable, oversized or conflicting, which leaves the baseline unknown and blocks the update. A commit string is the resolved baseline.
+ */
 export async function readLockedRevision(profileDir, bundle) {
     let handle;
     try {
@@ -57,11 +61,11 @@ export async function readLockedRevision(profileDir, bundle) {
             length += bytesRead;
         }
         if (length > maximum)
-            return undefined;
-        return lockedRevision(parse(new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, length)), { maxAliasCount: 0 }), bundle);
+            return null;
+        return lockedRevision(parse(new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, length)), { maxAliasCount: 0 }), bundle) ?? null;
     }
-    catch {
-        return undefined;
+    catch (error) {
+        return error?.code === 'ENOENT' ? undefined : null;
     }
     finally {
         await handle?.close();
