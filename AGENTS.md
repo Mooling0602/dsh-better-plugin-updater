@@ -13,6 +13,7 @@ Rules for AI coding agents working in this repository. Follow them exactly. When
 - **A local modification you did not make is the maintainer's own edit.** Assume that first rather than treating it as stray state to revert or as a defect to fix. Leave it in place, account for it when reading a diff, commit only what you changed, and ask the maintainer when its purpose is unclear.
 - **Never rewrite history that is already on `origin`.** A local commit may be amended or rebased before it is pushed. Once it is pushed, leave it alone: do not force push, do not amend, do not rebase.
 - **Do not commit secrets, tokens or personal absolute paths.** A credential reference name such as `githubTokenEnv` belongs in configuration; the value behind it never appears in a file this repository tracks.
+- **A release tag points at its release commit and nothing else.** The only commit a version may tag is the one whose subject is `release: v<version>`, and `release.yml` creates the tag on that commit. Never tag a different commit, retag an existing version, or move a published tag. `CONTEXT.md` owns the mechanism and the recovery path.
 
 ## 2. Commit messages: Conventional Commits
 
@@ -32,6 +33,7 @@ Follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0
 - **Body** explains why the change was made. It is mandatory for a bug fix or for a change to a persisted format, because a one line subject cannot justify either of them.
 - **Do not wrap the message by hand.** The subject and each body paragraph are one complete line, with no limit on how many characters that line holds. Where a body benefits from separate points, use a Markdown list with one point per line rather than hard-wrapped prose; section 8 states the rule and the reason it exists.
 - **Footers:** use `BREAKING CHANGE: <description>` or a `!` after the type for any change to the published package contract. That contract covers the `dsh.bundle` patch, the exported subpaths, the `plugin_updates` JSON shape, the `--client-lang` command metadata, the configuration schema and the profile-local scheduled queue format. Reference issues as `Closes #123`.
+- **Release commits are the one exception to the type list.** A commit whose subject is exactly `release: v<version>` is not a Conventional Commit, because the release workflow reads the version from that subject. It carries the version bump and the changelog section for that version, and nothing else. When both are already committed, an empty commit carries the subject alone.
 - **One logical change per commit.** Do not mix an unrelated refactor, a formatting sweep or a dependency bump into a behavioural fix.
 
 Examples that fit this repository:
