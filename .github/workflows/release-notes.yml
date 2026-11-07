@@ -1,0 +1,95 @@
+# Regenerate one release's notes from the changelog.
+#
+# Use it to repair an already published release body: fix CHANGELOG.md on main,
+# then run this workflow with the tag. Notes are composed from the checked-out
+# changelog source, not from the tag's own copy, because a fix lands after the
+# tag. Release assets are never touched.
+name: Release notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Bare version tag whose GitHub Release notes to regenerate (for example 0.1.0)"
+        required: true
+        type: string
+      ref:
+        description: "Git ref the notes are composed from (default main)"
+        required: false
+        type: string
+        default: main
+      dry_run:
+        description: "Compose and print the notes without editing the GitHub Release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-notes-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAG: ${{ inputs.tag }}
+      REF: ${{ inputs.ref }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate the inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${TAG}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'${TAG}' is not a bare semantic version tag (for example 0.1.0)"
+            exit 1
+          fi
+          tag_exists=false
+          if git rev-parse --verify --quiet "refs/tags/${TAG}" > /dev/null; then
+            tag_exists=true
+          fi
+          release_exists=false
+          if [ "${tag_exists}" = "true" ] && gh release view "${TAG}" > /dev/null 2>&1; then
+            release_exists=true
+          fi
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "::notice::dry run: tag exists=${tag_exists}, release exists=${release_exists}"
+            exit 0
+          fi
+          if [ "${tag_exists}" != "true" ]; then
+            echo "::error::the tag ${TAG} does not exist; check the tag name"
+            exit 1
+          fi
+          if [ "${release_exists}" != "true" ]; then
+            echo "::error::no GitHub Release exists for ${TAG}; publish the release first"
+            exit 1
+          fi
+      - name: Compose the release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          notes="${RUNNER_TEMP}/release-notes.md"
+          node .github/scripts/release-notes.mjs "${TAG}" --tag "${TAG}" --repo "${GITHUB_REPOSITORY}" --output "${notes}"
+          echo "notes_file=${notes}" >> "$GITHUB_OUTPUT"
+          echo "--- release notes: CHANGELOG.md Header, ${TAG} section, Endfix ---"
+          cat "${notes}"
+      - name: Update the GitHub Release body
+        if: ${{ env.DRY_RUN != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "${TAG}" --notes-file "${{ steps.notes.outputs.notes_file }}"
+          echo "::notice::release ${TAG} notes regenerated from ${REF}"

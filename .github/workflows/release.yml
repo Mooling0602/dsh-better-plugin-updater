@@ -28,7 +28,7 @@ jobs:
       - name: Test
         run: pnpm test
       - name: Assemble release notes
-        run: node .github/scripts/release-notes.mjs --version "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > "$RUNNER_TEMP/release-notes.md"
+        run: node .github/scripts/release-notes.mjs "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --output "$RUNNER_TEMP/release-notes.md"
       - name: Verify the tag matches the package version
         run: test "$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
       - name: Check whether the version is already published
@@ -40,9 +40,9 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Publish to npm
+      - name: Stage the version on npm
         if: steps.registry.outputs.exists == 'false'
-        run: npm publish --provenance --access public
+        run: npm stage publish --provenance --access public
       - name: Pack the plugin bundle
         run: pnpm pack
       - name: Create the GitHub release
