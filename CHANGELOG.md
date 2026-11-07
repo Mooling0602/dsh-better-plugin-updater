@@ -13,6 +13,17 @@ Release notes for this DSH plugin bundle. Version sections are ordered newest fi
 
 **full_changelog!**
 
+## 0.1.1
+
+### Fixes
+
+- Remove the duplicated version heading from the GitHub release body, and regenerate a published body from the changelog without touching its tag or assets, in commit 3cb0fc7.
+- Publish through npm staged publishing, so the second factor stays with a maintainer instead of the workflow, in commit 5c7eee0.
+
+### Documentation
+
+- Label the command paragraph in the plugin introduction, in commit 15d0def.
+
 ## 0.1.0
 
 ### Features
