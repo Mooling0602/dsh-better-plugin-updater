@@ -2,12 +2,14 @@
  * Locale bundles for the updater's settings page.
  *
  * This is the Client half of the page's copy, separate from `src/locales/`
- * which the Host renders command output from. The keys are a compile-time
+ * which the Host renders command output from. Settings shared with the schema
+ * come from `settings-copy.ts`. The keys are a compile-time
  * contract: the English dictionary defines them, and every other language must
  * supply all of them and nothing else.
  */
 
 import type { SettingsFormLabels } from '@deepseek-ai/dsh-client-ui-primitives';
+import { settingsCopy } from '../settings-copy.js';
 
 /** Locale keys the settings page renders. */
 export type UpdaterSettingsLocaleKey =
@@ -24,19 +26,19 @@ export type UpdaterSettingsLocaleKey =
 export const en: Record<UpdaterSettingsLocaleKey, string> = {
   title: 'Plugin updater',
   summary: 'Checks registry and GitHub releases, then applies the update you review.',
-  language: 'Plugin language',
-  languageHint: 'Language the plugin uses for its own output. Auto follows the interface.',
-  languageAuto: 'Auto',
-  languageEn: 'English',
-  languageZh: '简体中文',
-  requestTimeout: 'Request timeout',
-  requestTimeoutHint: 'Deadline for one registry or metadata request, in milliseconds.',
-  maxMetadata: 'Max metadata size',
-  maxMetadataHint: 'Largest registry response this plugin reads, in bytes.',
-  planLifetime: 'Confirmation lifetime',
-  planLifetimeHint: 'How long an update confirmation stays valid, in milliseconds.',
-  tokenVariable: 'GitHub token variable',
-  tokenVariableHint: 'Name of the environment variable holding a token. The token itself never enters this page.',
+  language: settingsCopy.en.language.label,
+  languageHint: settingsCopy.en.language.hint,
+  languageAuto: settingsCopy.en.languageOptions.auto,
+  languageEn: settingsCopy.en.languageOptions.en,
+  languageZh: settingsCopy.en.languageOptions.zh,
+  requestTimeout: settingsCopy.en.requestTimeoutMs.label,
+  requestTimeoutHint: settingsCopy.en.requestTimeoutMs.hint,
+  maxMetadata: settingsCopy.en.maxMetadataBytes.label,
+  maxMetadataHint: settingsCopy.en.maxMetadataBytes.hint,
+  planLifetime: settingsCopy.en.planTtlMs.label,
+  planLifetimeHint: settingsCopy.en.planTtlMs.hint,
+  tokenVariable: settingsCopy.en.githubTokenEnv.label,
+  tokenVariableHint: settingsCopy.en.githubTokenEnv.hint,
   overridden: 'Overridden',
   reset: 'Reset',
   invalid: 'Enter a whole number within the allowed range.',
@@ -51,19 +53,19 @@ export const en: Record<UpdaterSettingsLocaleKey, string> = {
 export const zh: Record<UpdaterSettingsLocaleKey, string> = {
   title: '插件更新助手',
   summary: '检查 registry 与 GitHub 上的发布，然后执行你确认过的更新。',
-  language: '插件语言',
-  languageHint: '插件自身输出使用的语言。自动跟随界面语言。',
-  languageAuto: '自动',
-  languageEn: 'English',
-  languageZh: '简体中文',
-  requestTimeout: '请求超时',
-  requestTimeoutHint: '单次 registry 或元数据请求的时限，单位为毫秒。',
-  maxMetadata: '元数据大小上限',
-  maxMetadataHint: '本插件接受的 registry 响应最大字节数。',
-  planLifetime: '确认有效期',
-  planLifetimeHint: '更新确认保持有效的时长，单位为毫秒。',
-  tokenVariable: 'GitHub 令牌变量名',
-  tokenVariableHint: '保存令牌的环境变量名。令牌本身不会出现在本页。',
+  language: settingsCopy.zh.language.label,
+  languageHint: settingsCopy.zh.language.hint,
+  languageAuto: settingsCopy.zh.languageOptions.auto,
+  languageEn: settingsCopy.zh.languageOptions.en,
+  languageZh: settingsCopy.zh.languageOptions.zh,
+  requestTimeout: settingsCopy.zh.requestTimeoutMs.label,
+  requestTimeoutHint: settingsCopy.zh.requestTimeoutMs.hint,
+  maxMetadata: settingsCopy.zh.maxMetadataBytes.label,
+  maxMetadataHint: settingsCopy.zh.maxMetadataBytes.hint,
+  planLifetime: settingsCopy.zh.planTtlMs.label,
+  planLifetimeHint: settingsCopy.zh.planTtlMs.hint,
+  tokenVariable: settingsCopy.zh.githubTokenEnv.label,
+  tokenVariableHint: settingsCopy.zh.githubTokenEnv.hint,
   overridden: '已覆盖',
   reset: '恢复默认',
   invalid: '请填写允许范围内的整数。',

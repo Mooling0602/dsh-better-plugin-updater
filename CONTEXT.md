@@ -32,6 +32,7 @@ src/errors.ts           Owned failures with stable translation identities
 src/credentials.ts      Read-only credential-reference adapter and safe provider-error boundary
 src/tools.ts            Read-only structured JSON tool adapter
 src/config.ts           Schemastery config schema, volatile scalars and inert defaults
+src/settings-copy.ts    Shared localized settings labels, hints and language choices
 src/types.ts            Shared adapter, source, provider, plan and result contracts
 src/sources.ts          Conservative source classification and origin validation
 src/lockfile.ts         Bounded read-only pnpm Git baseline extraction
@@ -60,7 +61,7 @@ The DSH-specific types are a small structural contract rather than imports from 
 
 ## Configuration
 
-`src/config.ts` declares a `@deepseek-ai/schemastery` schema, not a `zod` one. DSH only offers a settings page to a plugin entry whose runtime `Config` carries `toJSON` and at least one volatile field, and the schemastery fork is the only validator that satisfies both. Do not substitute the npm `schemastery` package or `zod` here.
+`src/config.ts` declares a `@deepseek-ai/schemastery` schema, not a `zod` one. DSH only offers a settings page to a plugin entry whose runtime `Config` carries `toJSON` and at least one volatile field, and the schemastery fork is the only validator that satisfies both. Do not substitute the npm `schemastery` package or `zod` here. Schema descriptions carry English and Simplified Chinese via `description` and `i18n` for native schema-based settings pages, including language choices and nested source fields. The scalar settings and language choices use the shared `src/settings-copy.ts` data in both the schema and the Web page dictionaries; the schema combines each label and hint into one description. Native clients determine their own title and description layout.
 
 Cordis validates this schema before `apply` runs and passes the parsed result, so `apply` treats its second argument as already validated and must not parse it again. Re-parsing a parsed value fails, because a volatile scalar arrives as a reference object rather than the scalar.
 
