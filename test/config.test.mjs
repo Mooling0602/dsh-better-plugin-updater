@@ -41,9 +41,10 @@ test('schema and Web settings use the same localized field and option copy', () 
   };
   for (const [field, [label, hint]] of Object.entries(mapping)) {
     const description = refs[fields[field]].meta.description;
-    assert.equal(description[''], `${en[label]}. ${en[hint]}`);
+    assert.equal(description[''], en[hint]);
     assert.equal(description.zh, `${zh[label]}（${zh[hint].replace(/。$/, '')}）`);
   }
+  assert.equal(en.languageZh, '简体中文');
   const choices = refs[fields.language].list.map(id => refs[id]);
   for (const [index, key] of ['languageAuto', 'languageEn', 'languageZh'].entries()) {
     assert.equal(choices[index].meta.description[''], en[key]);

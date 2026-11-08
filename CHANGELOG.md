@@ -13,6 +13,12 @@ Release notes for this DSH plugin bundle. Version sections are ordered newest fi
 
 **full_changelog!**
 
+## Unreleased
+
+### Fixes
+
+- Localize configuration descriptions and language choices for schema-based settings clients while sharing copy with the Web settings page, in commit 3bccb48.
+
 ## 0.1.1
 
 ### Fixes

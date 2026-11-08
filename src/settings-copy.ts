@@ -6,7 +6,7 @@ export const settingsCopy = {
     maxMetadataBytes: { label: 'Max metadata size', hint: 'Largest metadata response accepted, in bytes.' },
     planTtlMs: { label: 'Confirmation lifetime', hint: 'How long an update confirmation stays valid, in milliseconds.' },
     githubTokenEnv: { label: 'GitHub token reference', hint: 'Credential reference naming the GitHub token, not the token value.' },
-    languageOptions: { auto: 'Auto', en: 'English', zh: 'Simplified Chinese' },
+    languageOptions: { auto: 'Auto', en: 'English', zh: '简体中文' },
   },
   zh: {
     language: { label: '插件语言', hint: '插件自身输出使用的语言。自动跟随界面语言。' },
@@ -21,5 +21,5 @@ export const settingsCopy = {
 /** Compose the single description used by schema-based settings clients. */
 export function settingsDescription(field: keyof Omit<typeof settingsCopy.en, 'languageOptions'>, locale: 'en' | 'zh'): string {
   const { label, hint } = settingsCopy[locale][field];
-  return locale === 'zh' ? `${label}（${hint.replace(/。$/, '')}）` : `${label}. ${hint}`;
+  return locale === 'zh' ? `${label}（${hint.replace(/。$/, '')}）` : hint;
 }
