@@ -54,8 +54,11 @@ export function createUpdaterCommand(updater: Pick<Updater, 'list' | 'check' | '
     for (const name of [...matches.keys()].sort()) results.push(...await updater.check(name, signal, gitBranch));
     return { results, unmatched };
   }
+  function describeUnmatched(unmatched: string[], language: Language): string {
+    return unmatched.length ? phrase(language, 'No installed packages matched: ', '没有已安装的插件匹配：') + unmatched.join(', ') : '';
+  }
   function describe(results: CheckResult[], unmatched: string[], language: Language): string {
-    return formatChecks(results, language) + (unmatched.length ? '\n\n' + phrase(language, 'No installed packages matched: ', '没有已安装的插件匹配：') + unmatched.join(', ') : '');
+    return [formatChecks(results, language), describeUnmatched(unmatched, language)].filter(Boolean).join('\n\n');
   }
   function exactTargets(plans: UpdatePlan[], language: Language): string {
     return phrase(language, 'Exact targets:', '精确安装目标：') + '\n' + plans.map(p => `- ${p.bundle.name}: ${p.candidate.spec}${p.candidate.registry ? ` (${p.candidate.registry})` : ''}`).join('\n');
@@ -132,7 +135,11 @@ export function createUpdaterCommand(updater: Pick<Updater, 'list' | 'check' | '
             pending.delete(owner);
             const plans = same && !accept ? previous.plans : available.map(r => updater.prepare(r, allowPinned, gitBranch));
             const outcome = await execute(plans, language);
-            return { kind: outcome.kind, text: describe(results, unmatched, language) + '\n\n' + outcome.text };
+            const notAttempted = results.filter(result => !isActionable(result, allowPinned)).map(result => result.bundle.name);
+            const notice = notAttempted.length ? phrase(language,
+              'Not updated: ', '未执行更新：') + notAttempted.join(', ') + phrase(language,
+              '. Run /plugin-updater check for details.', '。可运行 /plugin-updater check 查看详情。') : '';
+            return { kind: outcome.kind, text: [describeUnmatched(unmatched, language), notice, outcome.text].filter(Boolean).join('\n\n') };
           }
           const plans = available.map(r => updater.prepare(r, allowPinned, gitBranch));
           pending.set(owner, { patterns: [...patterns], allowPinned, ...(gitBranch === undefined ? {} : { gitBranch }), snapshot: current, plans, expires: Math.min(...plans.map(p => Date.parse(p.expiresAt))) });

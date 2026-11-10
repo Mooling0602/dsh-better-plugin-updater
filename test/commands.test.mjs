@@ -31,7 +31,11 @@ test('wildcards and multiple arguments deduplicate; confirmation is agent-scoped
   assert.match(preview.text, /plugin-b@2\.0\.0/);
   assert.equal(f.calls.filter(c => c[0] === 'apply').length, 0);
   assert.equal((await f.command.handler({ rawInput: 'confirm', agent: b })).kind, 'error');
-  assert.equal((await f.command.handler({ rawInput: 'ok', agent: a })).kind, 'success');
+  const result = await f.command.handler({ rawInput: 'ok', agent: a });
+  assert.equal(result.kind, 'success');
+  assert.match(result.text, /Fixture success/);
+  assert.doesNotMatch(result.text, /Update available\.|2\.0\.0|Checks do not/);
+  assert.deepEqual(f.calls.filter(c => c[0] === 'check').map(c => c[1]), ['plugin-a', 'plugin-b', 'plugin-a', 'plugin-b']);
   assert.deepEqual(f.calls.filter(c => c[0] === 'apply').map(c => c[1]), ['plugin-a', 'plugin-b']);
   assert.equal((await f.command.handler({ rawInput: 'ok', agent: a })).kind, 'error');
 });
@@ -54,7 +58,32 @@ test('risk flag applies immediately; unmatched patterns are reported', async () 
   const result = await f.command.handler({ rawInput: 'update @scope/plugin-? missing* --accept-removal-risk' });
   assert.equal(result.kind, 'success');
   assert.match(result.text, /missing\*/);
+  assert.match(result.text, /Fixture success/);
+  assert.doesNotMatch(result.text, /Update available\.|2\.0\.0|Checks do not/);
   assert.deepEqual(f.calls.filter(c => c[0] === 'apply').map(c => c[1]), ['@scope/plugin-c']);
+});
+
+test('mixed batches identify packages not updated without replaying their old checks', async () => {
+  const f = fixture();
+  const check = f.updater.check;
+  f.updater.check = async (...args) => (await check(...args)).map(result => result.bundle.name === 'plugin-b'
+    ? { ...result, status: 'error', message: 'Check failed.' } : result);
+  const result = await f.command.handler({ rawInput: 'update plugin-* --accept-removal-risk --lang zh' });
+  assert.equal(result.kind, 'success');
+  assert.match(result.text, /未执行更新：plugin-b/);
+  assert.match(result.text, /\/plugin-updater check/);
+  assert.doesNotMatch(result.text, /Check failed\.|Update available\.|检查不会安装或移除/);
+  assert.deepEqual(f.calls.filter(c => c[0] === 'apply').map(c => c[1]), ['plugin-a']);
+});
+
+test('failed updates report execution diagnostics without the pre-update check', async () => {
+  const f = fixture();
+  f.updater.apply = async () => ({ status: 'failed', message: 'Fixture installation failed.', diagnostic: 'Registry unavailable.' });
+  const result = await f.command.handler({ rawInput: 'update plugin-a --accept-removal-risk --lang zh' });
+  assert.equal(result.kind, 'error');
+  assert.match(result.text, /Fixture installation failed/);
+  assert.match(result.text, /Registry unavailable/);
+  assert.doesNotMatch(result.text, /Update available\.|2\.0\.0|检查不会安装或移除/);
 });
 
 test('removed plan action is rejected by commands and the tool without writes', async () => {
