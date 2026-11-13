@@ -71,6 +71,8 @@ jobs:
         run: test "$(node -p "require('./package.json').version")" = "${VERSION}"
       - name: Assemble release notes
         run: node .github/scripts/release-notes.mjs "${VERSION}" --tag "${VERSION}" --repo "${GITHUB_REPOSITORY}" --output "$RUNNER_TEMP/release-notes.md"
+      - name: Tag the release commit
+        run: node .github/scripts/release-tag.mjs
       - name: Check whether the version is already published
         id: registry
         run: |
@@ -85,15 +87,6 @@ jobs:
         run: npm publish --provenance --access public
       - name: Pack the plugin bundle
         run: pnpm pack
-      - name: Tag the release commit
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          git tag -a "${VERSION}" -m "commit $(git rev-parse --short=7 HEAD)"
-          test "$(git rev-list -n1 "${VERSION}")" = "${GITHUB_SHA}"
-          git push origin "${VERSION}"
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
