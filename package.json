@@ -1,6 +1,6 @@
 {
   "name": "dsh-better-plugin-updater",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Manual multi-source update checks and update plans for DeepSeek Harness plugin bundles.",
   "license": "MIT",
   "type": "module",
