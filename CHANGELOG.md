@@ -13,11 +13,18 @@ Release notes for this DSH plugin bundle. Version sections are ordered newest fi
 
 **full_changelog!**
 
-## Unreleased
+## 0.1.2
 
 ### Fixes
 
+- Keep the GitHub source and release update dialog open during installation and display the outcome even if the plugin detail page closes, in commit 9efd008.
+- Omit stale pre-update check results from completed update command output, while identifying packages that were not updated, in commit 5ce7bad.
 - Localize configuration descriptions and language choices for schema-based settings clients while sharing copy with the Web settings page, in commit 3bccb48.
+- Clarify the units in localized settings hints, in commit ef8a30d.
+
+### CI / CD
+
+- Publish npm releases directly through trusted publishing instead of staging them for manual approval, in commit ca70377.
 
 ## 0.1.1
 
