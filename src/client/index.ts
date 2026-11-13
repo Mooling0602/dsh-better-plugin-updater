@@ -10,6 +10,10 @@ import remoteContribution from '../../dist/typert.remote-client.js';
 import { en, zh, type UpdaterSettingsLocaleKey } from './locales.js';
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    /** Application-wide overlay surface. */
+    'shell.overlay': { kind: 'list'; scope: 'root' };
+  }
   interface LocaleNamespaceMap {
     /** Copy the updater's settings page renders. */
     'settings.updater': UpdaterSettingsLocaleKey
@@ -135,6 +139,8 @@ export function mountGitHubUpdate(ctx: Context): void {
     let active = true;
     let releaseRemote: (() => Promise<void>) | undefined;
     let releaseSlot: (() => void) | undefined;
+    let releaseOverlay: (() => void) | undefined;
+    let removeStyles: (() => void) | undefined;
     const remote = inner.get('remote') as {
       $mount(contribution: typeof remoteContribution): Promise<() => Promise<void>>;
       $on(event: 'plugin-manager/changed', listener: () => void): () => void;
@@ -143,19 +149,20 @@ export function mountGitHubUpdate(ctx: Context): void {
     void remote.$mount(remoteContribution).then(release => {
       if (!active) { void release(); return; }
       releaseRemote = release;
-      releaseSlot = inner.slots.inject('plugins.detail.section', () => {
-        if (!hostRequire) return () => {};
-        const { GitHubUpdateView } = require('./github-update-view.js') as { GitHubUpdateView: never };
-        const { installDialogStyles } = require('./github-update-section.js') as { installDialogStyles: () => () => void };
-        const removeStyles = installDialogStyles();
-        const disposeSlot = inner.slots.register({
-          name: 'plugins.detail.section', id: `${BUNDLE_NAME}.github-update`,
-          inject: () => ({ remote: inner.get('remote.betterPluginUpdaterUi'), locale: inner.locale, events }),
-        }, GitHubUpdateView);
-        return () => { disposeSlot(); removeStyles(); };
-      });
+      if (!hostRequire) return;
+      const { GitHubUpdateView } = require('./github-update-view.js') as { GitHubUpdateView: never };
+      const { GitHubDialogStore, GitHubUpdateDialog, installDialogStyles } = require('./github-update-section.js') as typeof import('./github-update-section.js');
+      const dialog = new GitHubDialogStore();
+      removeStyles = installDialogStyles();
+      releaseOverlay = inner.slots.inject('shell.overlay', () => inner.slots.register({
+        name: 'shell.overlay', id: `${BUNDLE_NAME}.github-update-dialog`, inject: () => ({ dialog }),
+      }, GitHubUpdateDialog));
+      releaseSlot = inner.slots.inject('plugins.detail.section', () => inner.slots.register({
+        name: 'plugins.detail.section', id: `${BUNDLE_NAME}.github-update`,
+        inject: () => ({ remote: inner.get('remote.betterPluginUpdaterUi'), locale: inner.locale, events, dialog }),
+      }, GitHubUpdateView));
     }).catch(error => { if (active) console.warn('GitHub update controls are unavailable:', error); });
-    return () => { active = false; releaseSlot?.(); if (releaseRemote) void releaseRemote(); };
+    return () => { active = false; releaseSlot?.(); releaseOverlay?.(); removeStyles?.(); if (releaseRemote) void releaseRemote(); };
   }, 'dsh-better-plugin-updater: GitHub detail controls'));
 }
 

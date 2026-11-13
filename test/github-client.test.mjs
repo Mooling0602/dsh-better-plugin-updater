@@ -22,13 +22,13 @@ async function fixture(mount) {
     });
   } } }, document });
   let disposeEffect;
-  let registration;
+  const registrations = new Map();
   let disposedSlot = 0;
   const service = { describe() {}, check() {}, apply() {} };
   const locale = { getSnapshot() { return { active: 'en' }; }, subscribe() { return () => {}; } };
   const slots = {
-    inject(name, callback) { assert.equal(name, 'plugins.detail.section'); return callback(); },
-    register(options, component) { registration = { options, component }; return () => { disposedSlot++; }; },
+    inject(name, callback) { assert.ok(['plugins.detail.section', 'shell.overlay'].includes(name)); return callback(); },
+    register(options, component) { registrations.set(options.name, { options, component }); return () => { disposedSlot++; }; },
   };
   const inner = {
     slots, locale,
@@ -36,7 +36,7 @@ async function fixture(mount) {
     effect(callback) { disposeEffect = callback(); return disposeEffect; },
   };
   client.mountGitHubUpdate({ inject(_dependencies, callback) { callback(inner); } });
-  return { get registration() { return registration; }, get disposedSlot() { return disposedSlot; }, get styles() { return styles; }, dispose() { disposeEffect(); }, service, locale };
+  return { get registration() { return registrations.get('plugins.detail.section'); }, get overlay() { return registrations.get('shell.overlay'); }, get disposedSlot() { return disposedSlot; }, get styles() { return styles; }, dispose() { disposeEffect(); }, service, locale };
 }
 
 test('GitHub detail waits for the remote and withdraws both contributions', async () => {
@@ -48,14 +48,16 @@ test('GitHub detail waits for the remote and withdraws both contributions', asyn
   assert.equal(f.registration.options.name, 'plugins.detail.section');
   assert.equal(f.registration.options.inject().remote, f.service);
   assert.equal(f.registration.options.inject().locale, f.locale);
+  assert.equal(f.overlay.options.name, 'shell.overlay');
+  assert.equal(f.overlay.options.inject().dialog, f.registration.options.inject().dialog);
   assert.equal(f.registration.component({ subject: { kind: 'item', id: 'other' } }), null);
   assert.equal(f.styles.length, 1);
   assert.equal(f.styles[0].id, 'dsh-updater-github-dialog-styles');
-  assert.equal(f.styles[0].textContent, '.dsh-updater-github-dialog{width:min(560px,100%)}');
+  assert.equal(f.styles[0].textContent, '.dsh-updater-github-dialog{width:min(560px,100%)}.dsh-updater-github-dialog.running > div:first-child > div:first-child > button{visibility:hidden}');
   f.dispose();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.styles.length, 0);
-  assert.equal(f.disposedSlot, 1);
+  assert.equal(f.disposedSlot, 2);
   assert.equal(unmounted, 1);
 });
 

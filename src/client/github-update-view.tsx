@@ -7,7 +7,7 @@ import { translate } from '../i18n.js';
 import { normalizeLanguage } from '../language.js';
 import { en, zh } from './github-locales.js';
 import { GitHubUpdateSection } from './github-update-section.js';
-import type { GitHubUpdateCandidate, GitHubUpdateCheck, GitHubUpdateResult } from './github-update-section.js';
+import type { GitHubDialogStore, GitHubUpdateCandidate, GitHubUpdateCheck, GitHubUpdateResult } from './github-update-section.js';
 
 /** Client-side Remote methods provided by the mounted contribution. */
 export interface GitHubRemoteClient {
@@ -32,6 +32,7 @@ export interface GitHubUpdateViewProps extends PluginDetailProps {
   readonly remote: GitHubRemoteClient;
   readonly locale: GitHubViewLocale;
   readonly events: GitHubViewEvents;
+  readonly dialog: GitHubDialogStore;
 }
 
 async function decode<T>(operation: Promise<RemoteResult<string>>): Promise<T> {
@@ -40,7 +41,7 @@ async function decode<T>(operation: Promise<RemoteResult<string>>): Promise<T> {
   return JSON.parse(result.value) as T;
 }
 
-function BundleView({ name, remote, locale, events }: { readonly name: string; readonly remote: GitHubRemoteClient; readonly locale: GitHubViewLocale; readonly events: GitHubViewEvents }): ReactNode {
+function BundleView({ name, remote, locale, events, dialog }: { readonly name: string; readonly remote: GitHubRemoteClient; readonly locale: GitHubViewLocale; readonly events: GitHubViewEvents; readonly dialog: GitHubDialogStore }): ReactNode {
   const [detail, setDetail] = useState<GitHubDetail | null>(null);
   const [revision, setRevision] = useState(0);
   const [loadedRevision, setLoadedRevision] = useState(0);
@@ -80,11 +81,11 @@ function BundleView({ name, remote, locale, events }: { readonly name: string; r
     const result = await decode<{ status: 'updated' | 'restart-required' | 'failed'; text: string }>(remote.apply(candidate.confirmationId, true, language));
     return { status: result.status === 'failed' ? 'failed' : 'success', detail: result.text };
   };
-  return <GitHubUpdateSection key={loadedRevision} source={source} labels={labels} onCheck={check} onUpdate={update} onDialogChange={setDialogOpen} />;
+  return <GitHubUpdateSection key={loadedRevision} source={source} labels={labels} onCheck={check} onUpdate={update} onDialogChange={setDialogOpen} dialog={dialog} />;
 }
 
 /** Contribute only to package detail pages and reset state when their subject changes. */
-export function GitHubUpdateView({ subject, remote, locale, events }: GitHubUpdateViewProps): ReactNode {
+export function GitHubUpdateView({ subject, remote, locale, events, dialog }: GitHubUpdateViewProps): ReactNode {
   if (subject.kind !== 'bundle') return null;
-  return <BundleView key={subject.pkg.name} name={subject.pkg.name} remote={remote} locale={locale} events={events} />;
+  return <BundleView key={subject.pkg.name} name={subject.pkg.name} remote={remote} locale={locale} events={events} dialog={dialog} />;
 }
