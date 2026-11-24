@@ -37,7 +37,7 @@ jobs:
         run: |
           mkdir -p "$DSH_RUNTIME"
           printf '{"private":true}\n' > "$DSH_RUNTIME/package.json"
-          pnpm --dir "$DSH_RUNTIME" add @deepseek-ai/dsh@0.2.3-alpha.2
+          pnpm --dir "$DSH_RUNTIME" add --ignore-scripts @deepseek-ai/dsh@0.2.3-alpha.2
       - name: Initialize isolated smoke profile
         env:
           DSH_HOME: ${{ runner.temp }}/dsh-home
@@ -47,7 +47,7 @@ jobs:
         env:
           DSH_HOME: ${{ runner.temp }}/dsh-home
           DSH_RUNTIME: ${{ runner.temp }}/dsh-runtime
-        run: pnpm --dir "$DSH_RUNTIME" exec dsh plugin --profile ci-smoke add "link:${GITHUB_WORKSPACE}"
+        run: pnpm --dir "$DSH_RUNTIME" exec dsh plugin --profile ci-smoke add --ignore-scripts "link:${GITHUB_WORKSPACE}"
       - name: Boot DSH and verify plugin activation
         env:
           DSH_HOME: ${{ runner.temp }}/dsh-home
