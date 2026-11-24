@@ -13,6 +13,17 @@ Release notes for this DSH plugin bundle. Version sections are ordered newest fi
 
 **full_changelog!**
 
+## 0.1.3
+
+### Fixes
+
+- Adapt dsh version 0.2.3 alpha channel (tested in 0.2.3-alpha.2), in commit 86b0406.
+
+### CI/CD
+
+- Rewrite test modules in TypeScript, in commit ef377a4.
+- Test plugin install and load stage with dsh in GitHub Actions runner, in commit 9e2f2d4 and commit df1d128.
+
 ## 0.1.2
 
 ### Fixes
