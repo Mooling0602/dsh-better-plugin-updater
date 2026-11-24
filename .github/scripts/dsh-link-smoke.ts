@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment';
 
 const [mode, entry, workspace = process.cwd()] = process.argv.slice(2);
 assert.ok(mode === 'prepare' || mode === 'verify', 'Expected prepare or verify mode.');
@@ -10,7 +11,7 @@ assert.ok(process.env.DSH_HOME, 'Expected an isolated DSH_HOME.');
 interface ProfileBoot {
   initializeProfileFromDefault(profile: string, platform: string): void;
   runProfile(options: {
-    environment: NodeJS.ProcessEnv;
+    environment: LaunchEnvironmentSnapshot;
     profile: string;
     patchFiles: string[];
     args: string[];
@@ -27,7 +28,9 @@ if (mode === 'prepare') {
   initializeProfileFromDefault(profile, 'web');
 } else {
   const { ctx, shutdown } = await runProfile({
-    environment: process.env,
+    environment: createLaunchEnvironmentSnapshot([
+      { source: 'process', values: Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)) },
+    ]),
     profile,
     patchFiles: [],
     args: [],
