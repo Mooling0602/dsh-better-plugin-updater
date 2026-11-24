@@ -9,7 +9,7 @@ It uses DSH's plugin manager to change packages. Open a GitHub-sourced plugin's 
 ## Requirements
 
 - Node.js 24.22.3 or later in the 24.x series, or 26.13.1 or later.
-- DSH `>=0.2.3-alpha.1 <0.3.0-0` with a managed profile in the Web app, the desktop app or the terminal. Version 0.2.3-alpha.2 has been tested; other versions in this range have not been verified.
+- DSH `>=0.2.3-alpha.2 <0.3.0-0` with a managed profile in the Web app, the desktop app or the terminal. Version 0.2.3-alpha.2 has been tested; other versions in this range have not been verified.
 
 ## Install
 
