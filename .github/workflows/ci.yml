@@ -14,8 +14,10 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  test:
     runs-on: ubuntu-latest
+    outputs:
+      dsh-versions: ${{ steps.dsh-versions.outputs.versions }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -31,13 +33,43 @@ jobs:
         run: pnpm check
       - name: Test
         run: pnpm test
+      - name: Discover compatible DSH versions
+        id: dsh-versions
+        run: |
+          versions="$(node .github/scripts/discover-dsh-versions.ts)"
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
+          echo "DSH versions: $versions"
+
+  verify:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh-version: ${{ fromJSON(needs.test.outputs.dsh-versions) }}
+    name: Verify DSH ${{ matrix.dsh-version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.3
+          cache: pnpm
+      - name: Install and build the plugin
+        run: |
+          pnpm install --ignore-scripts --frozen-lockfile
+          pnpm build
       - name: Install DSH runtime
         env:
           DSH_RUNTIME: ${{ runner.temp }}/dsh-runtime
+          DSH_VERSION: ${{ matrix.dsh-version }}
         run: |
           mkdir -p "$DSH_RUNTIME"
           printf '{"private":true}\n' > "$DSH_RUNTIME/package.json"
-          pnpm --dir "$DSH_RUNTIME" add --ignore-scripts @deepseek-ai/dsh@0.2.3-alpha.2
+          pnpm --dir "$DSH_RUNTIME" add --ignore-scripts "@deepseek-ai/dsh@$DSH_VERSION"
       - name: Initialize isolated smoke profile
         env:
           DSH_HOME: ${{ runner.temp }}/dsh-home
@@ -53,5 +85,26 @@ jobs:
           DSH_HOME: ${{ runner.temp }}/dsh-home
           DSH_PROFILE_BOOT: ${{ runner.temp }}/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot.js
         run: node .github/scripts/dsh-link-smoke.ts verify "$DSH_PROFILE_BOOT" "$GITHUB_WORKSPACE"
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.3
+          cache: pnpm
+      - name: Install
+        run: pnpm install --ignore-scripts --frozen-lockfile
       - name: Pack
         run: pnpm pack
+      - name: Upload plugin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-better-plugin-updater
+          path: dsh-better-plugin-updater-*.tgz
+          if-no-files-found: error

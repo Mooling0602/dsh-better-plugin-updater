@@ -33,6 +33,7 @@ scripts/build-client.ts Self-contained browser factory generation with esbuild
 .github/scripts/release-notes.ts Release-note assembly from CHANGELOG.md
 .github/scripts/release-tag.ts Idempotent release tag verification and publication
 .github/scripts/dsh-link-smoke.ts Isolated DSH profile initialization and local-link activation smoke test
+.github/scripts/discover-dsh-versions.ts Registry version discovery for the DSH compatibility matrix
 src/locales/            Complete English and Simplified Chinese dictionaries
 src/errors.ts           Owned failures with stable translation identities
 src/credentials.ts      Read-only credential-reference adapter and safe provider-error boundary
@@ -183,7 +184,7 @@ pnpm pack
 
 Tests use `node:test` against compiled modules. Edit TypeScript rather than generated JavaScript, then run `pnpm build`. `dist/` is ignored by Git, so no generated file is ever committed; `prepare` builds it on install, `prepublishOnly` re-checks and re-tests before a publish, and `pnpm pack` therefore packs a freshly built tree. A profile that installs the published tarball runs no build step, while an installation from the Git repository builds through `prepare` and can be asked to approve that build. Keep exported resources and distribution files aligned. Do not install into a live profile or restart it as an incidental development check.
 
-CI also installs the target DSH into the runner's temporary directory, creates a separate `DSH_HOME`, and installs the checked-out bundle through a local `link:` dependency. The smoke script checks the linked path, Host service activation and read-only inventory in that temporary profile. It does not apply updates or verify Web Client rendering. The smoke test runs only in the disposable CI environment, not against a developer's running DSH.
+CI runs tests first, then queries the npm registry for every published DSH version satisfying `engines.dsh` with `includePrerelease: true`, matching DSH's compatibility check, and runs a separate compatibility job for each match in parallel. Each job installs its target DSH into the runner's temporary directory, creates a separate `DSH_HOME`, and installs the checked-out bundle through a local `link:` dependency. The smoke script checks the linked path, Host service activation and read-only inventory in that temporary profile. It does not apply updates or verify Web Client rendering. The smoke test runs only in the disposable CI environment, not against a developer's running DSH. Once every compatibility job passes, the build job packs the plugin and uploads the tarball as a workflow artifact.
 
 ## Release
 
