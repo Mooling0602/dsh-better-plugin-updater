@@ -11,6 +11,7 @@ const result = await build({
   entryPoints: ['src/client/index.ts'], bundle: true, platform: 'browser',
   format: 'cjs', target: 'es2022', write: false, logLevel: 'warning', external,
 });
-if (result.outputFiles.length !== 1) throw new Error('Expected one self-contained Client bundle.');
-const code = `window.__ModuleLoader__.load({\n  id: "dsh-better-plugin-updater",\n  factory: (require) => {\n    var module = { exports: {} };\n${result.outputFiles[0].text}\n    module.exports.captureHostRequire?.(require);\n    return module.exports;\n  }\n});\n`;
+const [output] = result.outputFiles;
+if (result.outputFiles.length !== 1 || !output) throw new Error('Expected one self-contained Client bundle.');
+const code = `window.__ModuleLoader__.load({\n  id: "dsh-better-plugin-updater",\n  factory: (require) => {\n    var module = { exports: {} };\n${output.text}\n    module.exports.captureHostRequire?.(require);\n    return module.exports;\n  }\n});\n`;
 await writeFile('dist/client.js', code);

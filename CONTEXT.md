@@ -6,6 +6,10 @@ This package is a Cordis bundle with a Host coordinator and Web Client language 
 
 A separate manual smoke test installed the local linked bundle through `dsh plugin`, observed hot activation without restarting DSH, and called the live `plugin_updates` tool. A check of the installed `dsh-hint-shell` release attachment returned `current` at `0.1.0`. No real plugin upgrade was performed. Installation exposed an implicit-versus-canonical tool schema mismatch; the registry declaration and regression assertions cover that boundary. A later diagnostic smoke test reloaded the linked bundle through the supported CLI and observed real GitHub HTTP 403 quota exhaustion for both `dsh-mloader` source checks and `dsh-hint-shell` release checks: each retained `error.githubRateLimitedUntil`, numeric `status: 403`, and a normalized UTC `retryAt`. This did not perform an update, add credentials, schedule a retry, or restart DSH.
 
+## Development verification
+
+The tests and development scripts are TypeScript and run directly on the supported Node version using erasable syntax. `tsconfig.tooling.json` strictly checks both against the declarations produced by the package build. `pnpm check` builds before checking the tooling so that the test imports resolve to the same `dist` interface used at runtime. `pnpm test` builds and runs the TypeScript tests with Node's test runner. Generated JavaScript in `dist` remains the published runtime output.
+
 ## Modules
 
 ```text
@@ -21,14 +25,14 @@ src/client/github-update-section.tsx GitHub update controls and confirmation dia
 src/client/github-locales.ts GitHub detail dictionaries
 src/github-ui.ts        GitHub-only plans over the shared coordinator
 src/github-remote.ts    Owner-only Remote facade for GitHub detail operations
-scripts/generate-typert.mjs Strict Host and Client Remote descriptor generation
+scripts/generate-typert.ts Strict Host and Client Remote descriptor generation
 src/client/settings-controller.ts Settings form scope, field specs and page snapshot projection
 src/client/settings-page.tsx Settings page rendered from the shared settings primitives
 src/client/locales.ts   Client-side page dictionaries (English and Simplified Chinese)
-scripts/build-client.mjs Self-contained browser factory generation with esbuild
-.github/scripts/release-notes.mjs Release-note assembly from CHANGELOG.md
-.github/scripts/release-tag.mjs Idempotent release tag verification and publication
-.github/scripts/dsh-link-smoke.mjs Isolated DSH profile initialization and local-link activation smoke test
+scripts/build-client.ts Self-contained browser factory generation with esbuild
+.github/scripts/release-notes.ts Release-note assembly from CHANGELOG.md
+.github/scripts/release-tag.ts Idempotent release tag verification and publication
+.github/scripts/dsh-link-smoke.ts Isolated DSH profile initialization and local-link activation smoke test
 src/locales/            Complete English and Simplified Chinese dictionaries
 src/errors.ts           Owned failures with stable translation identities
 src/credentials.ts      Read-only credential-reference adapter and safe provider-error boundary
@@ -83,7 +87,7 @@ The GitHub update section uses the public `plugins.detail.section` slot, which t
 
 The shared modal card fixes its own width at `min(380px, 100%)` and accepts no width property, so the confirmation dialog carries the `dsh-updater-github-dialog` class and the mount injects a rule widening that class to `min(560px, 100%)`. The same stylesheet hides the modal's header close button while an update runs. Its selector follows the shared modal's content and header structure, so that structure must be checked when upgrading the primitive. The store's close guard also covers the backdrop and Escape. The stylesheet is removed with the Client plugin. The dialog drops the coordinator's non-atomic and recovery warnings, because it states both itself, and keeps the permission and tracking-ref warnings, which add information the dialog does not otherwise show.
 
-The package publishes generated `./typert` and `./remote` contributions. `scripts/generate-typert.mjs` builds a temporary workspace under `os.tmpdir()` because the generator discovers workspace projects, then copies the generated descriptors into `dist`. The Client mounts the contribution before registering the section and unmounts it on disposal. DSH's Typert loader caches package export discovery for the process lifetime, so an already running Host that loaded this package without `./typert` must restart after updating to a build that publishes it. The detail UI has not been verified in a running browser by the automated tests.
+The package publishes generated `./typert` and `./remote` contributions. `scripts/generate-typert.ts` builds a temporary workspace under `os.tmpdir()` because the generator discovers workspace projects, then copies the generated descriptors into `dist`. The Client mounts the contribution before registering the section and unmounts it on disposal. DSH's Typert loader caches package export discovery for the process lifetime, so an already running Host that loaded this package without `./typert` must restart after updating to a build that publishes it. The detail UI has not been verified in a running browser by the automated tests.
 
 `inject` stays at the minimum: `locale` and `remote.commands`. Do not add `slots` or `configForms` to it. The settings page and GitHub action wait for their own services through `ctx.inject`, and declaring them at the top level would turn a deployment without a plugin manager into a plugin that never loads at all, taking the command-language bridge down with it.
 
@@ -187,9 +191,9 @@ CI also installs the target DSH into the runner's temporary directory, creates a
 
 A release is a single commit whose subject is exactly `release: v<x.y.z>`, pushed to `main`. That commit carries the `package.json` version change and nothing else, so it is always the last commit of a release; the changelog section may land in an earlier commit. When the version already matches the subject, an empty commit carries it. The subject is the trigger and the only source of the version, so the commit must be pushed rather than a tag: a human never creates the tag. `.github/workflows/release.yml` reads the version from the subject, verifies that `package.json` agrees, creates an annotated `<x.y.z>` tag whose message is `commit <short hash>`, publishes the version to npm, and creates the GitHub release with the packed tarball. The tag must point at that release commit and no other. The workflow checks the checkout and both local and remote tags before publishing, reuses an existing annotated tag only when it points at the release commit, and refuses a lightweight or conflicting tag without moving it. The tag carries no `v`, and the release title carries it. A release that already exists is announced and skipped, so a re-run cannot create a second one.
 
-If a workflow revision without tag reuse fails after publishing to npm, rerunning that revision still fails. Verify that the existing annotated tag points to the release commit, obtain the already published tarball with `npm pack <package>@<version>`, generate notes from that commit with `release-notes.mjs`, and create the missing GitHub release with `gh release create <version> --verify-tag --notes-file <notes> <tarball>`. Do not delete, recreate, or move the existing tag.
+If a workflow revision without tag reuse fails after publishing to npm, rerunning that revision still fails. Verify that the existing annotated tag points to the release commit, obtain the already published tarball with `npm pack <package>@<version>`, generate notes using the release-notes script from that commit, and create the missing GitHub release with `gh release create <version> --verify-tag --notes-file <notes> <tarball>`. Do not delete, recreate, or move the existing tag.
 
-The note body is the shared `Header`, the matching version section, and the shared `Endfix`, joined with blank lines. It carries no version heading, because the release title already shows one and a second heading reads as duplicated content in the published body. `.github/workflows/release-notes.yml` recomposes a published release from the changelog on a chosen ref, which repairs a body after a changelog fix without touching the tag or its assets.
+The note body is the shared `Header`, the matching version section, and the shared `Endfix`, joined with blank lines. It carries no version heading, because the release title already shows one and a second heading reads as duplicated content in the published body. `.github/workflows/release-notes.yml` runs the workflow revision's release-notes script against the changelog checked out from a chosen ref, which repairs a body after a changelog fix without touching the tag or its assets. The script accepts `--changelog <file>` for this separate checkout.
 
 Every entry in a version section ends with the commit that introduced the change, written as `, in commit <short hash>`. The workflow copies the section into the release note verbatim and never adds a hash, so a missing one is a maintainer omission and not something CI can recover. Use the introducing commit rather than the release commit, because the note describes when the behaviour landed.
 

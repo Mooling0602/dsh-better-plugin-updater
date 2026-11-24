@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const readJson = async path => JSON.parse(await readFile(new URL(path, import.meta.url), 'utf8'));
+const readJson = async (path: string) => JSON.parse(await readFile(new URL(path, import.meta.url), 'utf8'));
 
 test('localized detail documents are included in the published package', async () => {
   const manifest = await readJson('../package.json');

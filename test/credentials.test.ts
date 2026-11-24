@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveGithubToken } from '../dist/credentials.js';
 import { UpdaterError } from '../dist/errors.js';
+import type { CredentialReferences } from '../dist/credentials.js';
 
 const reference = 'FIXTURE_GITHUB_TOKEN';
 
@@ -14,9 +15,9 @@ test('without the optional Host service only the selected environment reference 
 });
 
 test('the Host provider is authoritative over the environment, including missing and removed values', async () => {
-  const calls = [];
-  let value = 'fixture-stored-token';
-  const credentials = { async resolve(ref) { calls.push(ref); return value === undefined ? undefined : { value, source: 'file' }; } };
+  const calls: string[] = [];
+  let value: string | undefined = 'fixture-stored-token';
+  const credentials = { async resolve(ref: string) { calls.push(ref); return value === undefined ? undefined : { value, source: 'file' }; } };
   const environment = { [reference]: 'fixture-stale-environment-token' };
   assert.equal(await resolveGithubToken(reference, credentials, environment), value);
   value = 'fixture-rotated-token';
@@ -31,8 +32,8 @@ test('the Host provider is authoritative over the environment, including missing
 test('provider failures and malformed values are sanitized and never fall back to the environment', async () => {
   for (const credentials of [
     { async resolve() { throw new Error('fixture-secret in YAML source'); } },
-    { async resolve() { return { value: 123 }; } },
-    {},
+    { async resolve() { return { value: 123 }; } } as unknown as CredentialReferences,
+    {} as unknown as CredentialReferences,
   ]) {
     await assert.rejects(resolveGithubToken(reference, credentials, { [reference]: 'fixture-environment-token' }), error => {
       assert.ok(error instanceof UpdaterError);
@@ -43,6 +44,9 @@ test('provider failures and malformed values are sanitized and never fall back t
     });
   }
   let calls = 0;
-  await assert.rejects(resolveGithubToken('not a reference', { async resolve() { calls++; } }), error => error.detail.key === 'error.githubCredentials');
+  await assert.rejects(resolveGithubToken('not a reference', { async resolve() { calls++; } }), error => {
+    assert.ok(error instanceof UpdaterError);
+    return error.detail.key === 'error.githubCredentials';
+  });
   assert.equal(calls, 0);
 });

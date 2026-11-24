@@ -70,9 +70,9 @@ jobs:
       - name: Verify the commit names this version
         run: test "$(node -p "require('./package.json').version")" = "${VERSION}"
       - name: Assemble release notes
-        run: node .github/scripts/release-notes.mjs "${VERSION}" --tag "${VERSION}" --repo "${GITHUB_REPOSITORY}" --output "$RUNNER_TEMP/release-notes.md"
+        run: node .github/scripts/release-notes.ts "${VERSION}" --tag "${VERSION}" --repo "${GITHUB_REPOSITORY}" --output "$RUNNER_TEMP/release-notes.md"
       - name: Tag the release commit
-        run: node .github/scripts/release-tag.mjs
+        run: node .github/scripts/release-tag.ts
       - name: Check whether the version is already published
         id: registry
         run: |

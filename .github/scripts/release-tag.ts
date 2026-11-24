@@ -5,7 +5,7 @@ const expected = process.env.GITHUB_SHA;
 if (!version || !/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Invalid release version.');
 if (!expected || !/^[0-9a-f]{40}$/.test(expected)) throw new Error('Invalid release commit.');
 
-const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
+const git = (...args: string[]): string => execFileSync('git', args, { encoding: 'utf8' }).trim();
 const ref = `refs/tags/${version}`;
 if (git('rev-parse', 'HEAD') !== expected) throw new Error('The checkout does not match the release commit.');
 
@@ -15,9 +15,9 @@ if (local.status === 0 && (git('cat-file', '-t', ref) !== 'tag' || git('rev-pars
   throw new Error('The local release tag is not an annotated tag for the release commit.');
 }
 
-function remoteTag() {
+function remoteTag(): boolean {
   const lines = git('ls-remote', '--tags', 'origin', ref, `${ref}^{}`);
-  const refs = new Map(lines ? lines.split('\n').map(line => { const [sha, name] = line.split('\t'); return [name, sha]; }) : []);
+  const refs = new Map<string | undefined, string | undefined>(lines ? lines.split('\n').map(line => { const [sha, name] = line.split('\t'); return [name, sha]; }) : []);
   if (refs.has(ref) && refs.get(`${ref}^{}`) !== expected) throw new Error('The remote release tag is not an annotated tag for the release commit.');
   return refs.has(ref);
 }

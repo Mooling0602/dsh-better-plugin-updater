@@ -8,29 +8,35 @@ import { en as pageEn, formLabels, zh as pageZh } from '../dist/client/locales.j
 import { normalizeLanguage } from '../dist/language.js';
 import { createUpdaterCommand } from '../dist/commands.js';
 import { resolveLanguage } from '../dist/i18n.js';
+import type { UpdatePlan } from '../dist/types.js';
 
-function remote(handler) {
-  const calls = [];
-  const commands = { ctx: 'default' };
+type RemoteCall = { context: string; args: [string, string, ...unknown[]] };
+type Execute = (id: string, line: string, attachments?: unknown, signal?: AbortSignal) => Promise<{ ok: boolean; value: { text: string } }>;
+type RemoteCommands = { ctx: string; execute: Execute };
+
+function remote(handler?: (...args: unknown[]) => Promise<unknown>): { commands: RemoteCommands; calls: RemoteCall[] } {
+  const calls: RemoteCall[] = [];
+  const commands: RemoteCommands = { ctx: 'default', execute: async () => ({ ok: true, value: { text: '' } }) };
   // Same configurable, context-sensitive accessor contract as rc.4's RemoteNamespaceService.
   Object.defineProperty(commands, 'execute', { configurable: true, enumerable: true, get() {
     const context = this.ctx;
-    return (...args) => {
-      calls.push({ context, args });
-      return handler ? handler(...args) : Promise.resolve({ ok: true, value: args });
+    return (...args: unknown[]) => {
+      calls.push({ context, args: args as [string, string, ...unknown[]] });
+      return handler ? handler(...args) as Promise<{ ok: boolean; value: { text: string } }> : Promise.resolve({ ok: true, value: { text: String(args[1]) } });
     };
   } });
   return { commands, calls };
 }
 
-function host(choice = 'auto', preference = 'en') {
-  const writes = [];
+function host(choice: 'auto' | 'en' | 'zh' = 'auto', preference: string = 'en') {
+  const writes: unknown[][] = [];
   const updater = {
     async list() { return []; }, async check() { return []; },
-    async apply(...args) { writes.push(args); return { status: 'failed', message: 'Fixture failure.' }; },
+    prepare(): UpdatePlan { throw new Error('Not used by this fixture.'); },
+    async apply(...args: unknown[]) { writes.push(args); return { status: 'failed' as const, message: 'Fixture failure.' }; },
   };
   const settings = { describe() { return [{ ns: 'locale', value: { preference } }]; } };
-  const command = createUpdaterCommand(updater, { language: language => resolveLanguage(choice, settings, language) });
+  const command = createUpdaterCommand(updater, { language: (language: 'en' | 'zh' | undefined) => resolveLanguage(choice, settings, language) });
   return { command, writes };
 }
 
@@ -43,16 +49,16 @@ test('browser-safe tags recognize supported languages without guessing from proc
 test('bridge preserves the original command wire, caller context, signal, attachments and result', async () => {
   const f = remote();
   const dispose = client.installLanguageBridge(f.commands, () => 'zh-CN');
-  const caller = Object.create(f.commands);
+  const caller = Object.create(f.commands) as RemoteCommands;
   caller.ctx = 'calling-client-context';
-  const attachments = [];
+  const attachments: unknown[] = [];
   const signal = new AbortController().signal;
   const response = await caller.execute('session', '/plugin-updater check plugin', attachments, signal);
   assert.equal(response.ok, true);
-  assert.equal(f.calls[0].context, caller.ctx);
-  assert.deepEqual(f.calls[0].args.slice(0, 2), ['session', '/plugin-updater check plugin --client-lang zh']);
-  assert.equal(f.calls[0].args[2], attachments);
-  assert.equal(f.calls[0].args[3], signal);
+  assert.equal(f.calls[0]!.context, caller.ctx);
+  assert.deepEqual(f.calls[0]!.args.slice(0, 2), ['session', '/plugin-updater check plugin --client-lang zh']);
+  assert.equal(f.calls[0]!.args[2], attachments);
+  assert.equal(f.calls[0]!.args[3], signal);
   dispose();
 });
 
@@ -62,19 +68,19 @@ test('only our exact command reads locale and receives metadata, without rewriti
   const dispose = client.installLanguageBridge(f.commands, () => { reads++; return 'zh'; });
   for (const line of ['/model', '/plugin-updater-other check', '/Plugin-updater', ' /plugin-updater', 'plain text']) {
     await f.commands.execute('s', line);
-    assert.equal(f.calls.at(-1).args[1], line);
+    assert.equal(f.calls.at(-1)!.args[1], line);
   }
   assert.equal(reads, 0);
   const line = '/plugin-updater\tcheck  plugin\n';
   await f.commands.execute('s', line);
-  assert.equal(f.calls.at(-1).args[1], `${line} --client-lang zh`);
+  assert.equal(f.calls.at(-1)!.args[1], `${line} --client-lang zh`);
   assert.equal(reads, 1);
   dispose();
 });
 
 test('actual current UI language wins over saved preference, changes next call and stays client-local', async () => {
   const h = host();
-  const execute = async (_id, line) => ({ ok: true, value: await h.command.handler({ rawInput: line.slice('/plugin-updater'.length) }) });
+  const execute = async (_id: unknown, line: unknown) => ({ ok: true, value: await h.command.handler({ rawInput: String(line).slice('/plugin-updater'.length) }) as { text: string } });
   const a = remote(execute);
   const b = remote(execute);
   let language = 'zh';
@@ -122,10 +128,10 @@ test('unsupported or unavailable UI locale leaves the Host fallback intact', asy
     return language;
   });
   await f.commands.execute('s', '/plugin-updater help');
-  assert.equal(f.calls.at(-1).args[1], '/plugin-updater help');
+  assert.equal(f.calls.at(-1)!.args[1], '/plugin-updater help');
   language = 'throw';
   await f.commands.execute('s', '/plugin-updater help');
-  assert.equal(f.calls.at(-1).args[1], '/plugin-updater help');
+  assert.equal(f.calls.at(-1)!.args[1], '/plugin-updater help');
   dispose();
 });
 
@@ -137,16 +143,16 @@ test('teardown restores accessors and cached wrappers become inert without undoi
   dispose(); dispose();
   assert.deepEqual(Object.getOwnPropertyDescriptor(f.commands, 'execute'), before);
   await cached('s', '/plugin-updater help');
-  assert.equal(f.calls.at(-1).args[1], '/plugin-updater help');
+  assert.equal(f.calls.at(-1)!.args[1], '/plugin-updater help');
 
   dispose = client.installLanguageBridge(f.commands, () => 'zh');
-  const bridge = Object.getOwnPropertyDescriptor(f.commands, 'execute').get;
-  const later = function() { return Reflect.apply(bridge, this, []); };
+  const bridge = Object.getOwnPropertyDescriptor(f.commands, 'execute')!.get!;
+  const later = function(this: unknown) { return Reflect.apply(bridge, this, []); };
   Object.defineProperty(f.commands, 'execute', { configurable: true, get: later });
   dispose();
-  assert.equal(Object.getOwnPropertyDescriptor(f.commands, 'execute').get, later);
+  assert.equal(Object.getOwnPropertyDescriptor(f.commands, 'execute')!.get, later);
   await f.commands.execute('s', '/plugin-updater help');
-  assert.equal(f.calls.at(-1).args[1], '/plugin-updater help');
+  assert.equal(f.calls.at(-1)!.args[1], '/plugin-updater help');
 });
 
 test('real Cordis Client lifecycle installs the bridge and unloads it cleanly', async () => {
@@ -157,21 +163,22 @@ test('real Cordis Client lifecycle installs the bridge and unloads it cleanly', 
   const fiber = ctx.plugin(client);
   await fiber.await();
   await f.commands.execute('s', '/plugin-updater help');
-  assert.match(f.calls.at(-1).args[1], /--client-lang zh$/);
+  assert.match(f.calls.at(-1)!.args[1], /--client-lang zh$/);
   await fiber.dispose();
   await f.commands.execute('s', '/plugin-updater help');
-  assert.equal(f.calls.at(-1).args[1], '/plugin-updater help');
+  assert.equal(f.calls.at(-1)!.args[1], '/plugin-updater help');
 });
 
 test('packaged browser factory is self-contained and declares a discoverable Client entry', async () => {
-  let loaded;
-  vm.runInNewContext(await readFile(new URL('../dist/client.js', import.meta.url), 'utf8'), { window: { __ModuleLoader__: { load(value) { loaded = value; } } } });
+  let loaded: { id: string; factory: (resolve: (specifier: string) => never) => { apply: unknown; inject: readonly string[] } } | undefined;
+  vm.runInNewContext(await readFile(new URL('../dist/client.js', import.meta.url), 'utf8'), { window: { __ModuleLoader__: { load(value: NonNullable<typeof loaded>) { loaded = value; } } } });
+  assert.ok(loaded);
   assert.equal(loaded.id, 'dsh-better-plugin-updater');
   const exported = loaded.factory(() => { throw new Error('Unexpected browser dependency'); });
   assert.equal(typeof exported.apply, 'function');
   assert.deepEqual(Array.from(exported.inject), ['locale', 'remote.commands']);
-  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-  assert.equal(pkg.exports['./client'].browser, './dist/client.js');
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { exports: Record<string, { browser: string }>; dsh: { client: { immediately: boolean; platform: string } }; scripts: Record<string, string | undefined>; files: string[] };
+  assert.equal(pkg.exports['./client']!.browser, './dist/client.js');
   assert.equal(pkg.dsh.client.immediately, true);
   assert.equal(pkg.dsh.client.platform, 'web');
   // A Git dependency holds no built files, so the install builds them, while the published
@@ -186,7 +193,7 @@ test('packaged browser factory is self-contained and declares a discoverable Cli
 
 test('settings page dictionaries cover the same keys and every one has copy', () => {
   assert.deepEqual(Object.keys(pageZh).sort(), Object.keys(pageEn).sort());
-  for (const key of Object.keys(pageEn)) {
+  for (const key of Object.keys(pageEn) as (keyof typeof pageEn)[]) {
     assert.ok(pageEn[key].length > 0, `${key} is blank in English`);
     assert.ok(pageZh[key].length > 0, `${key} is blank in Chinese`);
   }
@@ -194,7 +201,7 @@ test('settings page dictionaries cover the same keys and every one has copy', ()
   assert.equal(pageZh.language, '插件语言');
   assert.equal(pageEn.language, 'Plugin language');
   // The frame copy must come from the dictionary rather than a second hardcoded set.
-  const labels = formLabels(key => pageZh[key]);
+  const labels = formLabels((key: keyof typeof pageZh) => pageZh[key]);
   assert.equal(labels.save, pageZh.save);
   assert.equal(labels.unavailable, pageZh.unavailable);
 });

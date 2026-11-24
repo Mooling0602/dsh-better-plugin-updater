@@ -2,17 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GitHubUi } from '../dist/github-ui.js';
 import { Updater } from '../dist/updater.js';
+import type { InstalledBundle } from '../dist/types.js';
 
 const sha = '1'.repeat(40);
 const next = '2'.repeat(40);
-const gitBundle = { name: 'git-plugin', source: `github:owner/repo#${sha}`, version: '1.0.0', enabled: true, installed: true, removable: true, availability: 'profile' };
+const gitBundle: InstalledBundle = { name: 'git-plugin', source: `github:owner/repo#${sha}`, version: '1.0.0', enabled: true, installed: true, removable: true, availability: 'profile' };
 const npmBundle = { ...gitBundle, name: 'npm-plugin', source: 'npm-plugin@^1.0.0' };
 const releaseBundle = { ...gitBundle, name: 'release-plugin', source: 'https://github.com/owner/repo/releases/download/v1.0.0/plugin-v1.0.0.tgz' };
 
 function fixture() {
   let bundles = [gitBundle, npmBundle, releaseBundle];
   let checks = 0;
-  const calls = [];
+  const calls: (readonly ['remove', string] | readonly ['install', string])[] = [];
   const updater = new Updater({
     manager: {
       async listBundles() { return structuredClone(bundles); },
@@ -26,11 +27,12 @@ function fixture() {
       { kind: 'github-release', async check() { return { status: 'update-available', message: 'new release', candidate: { spec: 'https://github.com/owner/repo/releases/download/v2.0.0/plugin-v2.0.0.tgz', url: 'https://github.com/owner/repo/releases/download/v2.0.0/plugin-v2.0.0.tgz', version: '2.0.0' } }; } },
       { kind: 'github-source', async check(bundle, source) {
         checks++;
+        if (source.kind !== 'github-source') throw new Error('Expected a GitHub source.');
         return { status: 'pinned', message: 'new revision', detail: { key: 'msg.gitPinnedUpdate', params: { name: bundle.name } }, candidate: { spec: `${source.baseSpec}#${next}`, revision: next } };
       } },
     ],
-  });
-  return { updater, ui: new GitHubUi(updater), calls, get checks() { return checks; }, set bundles(value) { bundles = value; } };
+  } as ConstructorParameters<typeof Updater>[0]);
+  return { updater, ui: new GitHubUi(updater), calls, get checks() { return checks; }, set bundles(value: typeof bundles) { bundles = value; } };
 }
 
 test('detail checks ignore npm and share the coordinator GitHub provider', async () => {
@@ -38,8 +40,11 @@ test('detail checks ignore npm and share the coordinator GitHub provider', async
   assert.equal(await f.ui.describe('npm-plugin'), undefined);
   assert.equal(await f.ui.check('npm-plugin'), undefined);
   assert.equal(f.checks, 0);
-  assert.equal((await f.ui.describe('git-plugin')).repository, 'owner/repo');
+  const described = await f.ui.describe('git-plugin');
+  assert.ok(described);
+  assert.equal(described.repository, 'owner/repo');
   const checked = await f.ui.check('git-plugin');
+  assert.ok(checked?.confirmation);
   assert.equal(checked.result.status, 'pinned');
   assert.equal(checked.confirmation.plan.candidate.revision, next);
   assert.deepEqual(f.calls, []);
@@ -48,8 +53,11 @@ test('detail checks ignore npm and share the coordinator GitHub provider', async
 
 test('release attachments use the shared release provider and exact target plan', async () => {
   const f = fixture();
-  assert.equal((await f.ui.describe('release-plugin')).kind, 'github-release');
+  const described = await f.ui.describe('release-plugin');
+  assert.ok(described);
+  assert.equal(described.kind, 'github-release');
   const checked = await f.ui.check('release-plugin');
+  assert.ok(checked?.confirmation);
   assert.equal(checked.result.status, 'update-available');
   assert.equal(checked.confirmation.plan.candidate.spec, 'https://github.com/owner/repo/releases/download/v2.0.0/plugin-v2.0.0.tgz');
   assert.deepEqual(f.calls, []);
@@ -60,6 +68,8 @@ test('rechecking a package invalidates its preceding confirmation', async () => 
   const f = fixture();
   const first = await f.ui.check('git-plugin');
   const second = await f.ui.check('git-plugin');
+  assert.ok(first?.confirmation);
+  assert.ok(second?.confirmation);
   assert.notEqual(first.confirmation.id, second.confirmation.id);
   await assert.rejects(f.ui.apply(first.confirmation.id, true), /missing or expired/);
   assert.deepEqual(f.calls, []);
@@ -69,6 +79,7 @@ test('rechecking a package invalidates its preceding confirmation', async () => 
 test('a stale detail confirmation never removes a changed bundle', async () => {
   const f = fixture();
   const checked = await f.ui.check('git-plugin');
+  assert.ok(checked?.confirmation);
   f.bundles = [{ ...gitBundle, version: '1.0.1' }];
   await assert.rejects(f.ui.apply(checked.confirmation.id, true));
   assert.deepEqual(f.calls, []);
@@ -78,6 +89,7 @@ test('a stale detail confirmation never removes a changed bundle', async () => {
 test('detail confirmation requires acknowledgement and is single use', async () => {
   const f = fixture();
   const checked = await f.ui.check('git-plugin');
+  assert.ok(checked?.confirmation);
   const id = checked.confirmation.id;
   await assert.rejects(f.ui.apply(id, false), /acknowledged/);
   assert.deepEqual(f.calls, []);

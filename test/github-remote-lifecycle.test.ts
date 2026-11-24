@@ -15,8 +15,8 @@ function createHost() {
     async installBundle() { throw new Error('Unexpected package installation.'); },
   });
   ctx.provide('profileContext', { dir: '/nonexistent-github-remote-fixture' });
-  ctx.provide('commands', { register(definition) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } });
-  ctx.provide('tools', { register(definition) { tools.set(definition.name, definition); return () => tools.delete(definition.name); } });
+  ctx.provide('commands', { register(definition: { readonly name: string }) { commands.set(definition.name, definition); return () => commands.delete(definition.name); } });
+  ctx.provide('tools', { register(definition: { readonly name: string }) { tools.set(definition.name, definition); return () => tools.delete(definition.name); } });
   return { ctx, commands, tools };
 }
 
@@ -29,7 +29,7 @@ test('GitHub Remote registers through the Cordis plugin lifecycle and rejects ca
     assert.ok(service);
     assert.equal(service.typertRemote.serviceKey, 'betterPluginUpdaterUi');
     assert.equal(service.typertRemote.namespace, 'betterPluginUpdaterUi');
-    assert.deepEqual(remoteMethods(service).map(marker => marker.method), ['describe', 'check', 'apply']);
+    assert.deepEqual(remoteMethods(service).map((marker: { readonly method: string }) => marker.method), ['describe', 'check', 'apply']);
 
     await assert.rejects(service.describe('fixture-plugin'), /Only the Host owner/);
   } finally {

@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatApply, formatChecks, formatCommandError, formatInventory, formatUsage } from '../dist/format.js';
+import type { InstalledBundle, CheckResult, GithubSource, NpmSource } from '../dist/types.js';
 
-const bundle = { name: 'example-plugin', version: '1.0.0', source: 'example-plugin@^1.0.0', enabled: true, installed: true, removable: true, availability: 'profile' };
-const source = { kind: 'npm', packageName: bundle.name, channel: 'latest', registry: 'https://registry.test/', pinned: false };
+const bundle = { name: 'example-plugin', version: '1.0.0', source: 'example-plugin@^1.0.0', enabled: true, installed: true, removable: true, availability: 'profile' } satisfies InstalledBundle;
+const source = { kind: 'npm', packageName: bundle.name, channel: 'latest', registry: 'https://registry.test/', pinned: false } satisfies NpmSource;
 const candidate = { spec: 'example-plugin@2.0.0', version: '2.0.0', registry: source.registry };
-const result = { bundle, source, candidate, status: 'update-available', message: 'A newer stable package version is available.' };
+const result = { bundle, source, candidate, status: 'update-available', message: 'A newer stable package version is available.' } satisfies CheckResult;
 
-function notJson(value) { assert.throws(() => JSON.parse(value)); }
+function notJson(value: string): void { assert.throws(() => JSON.parse(value)); }
 
 test('inventory is a compact grouped list, including disabled, missing and DSH-provided bundles', () => {
   const text = formatInventory([bundle,
@@ -26,7 +27,7 @@ test('inventory is a compact grouped list, including disabled, missing and DSH-p
 });
 
 test('check output prioritizes available updates and groups every result without losing failures', () => {
-  const statuses = ['current', 'skipped', 'error', 'unknown', 'pinned', 'unsupported'];
+  const statuses = ['current', 'skipped', 'error', 'unknown', 'pinned', 'unsupported'] as const;
   const text = formatChecks([...statuses.map(status => ({ ...result, bundle: { ...bundle, name: `${status}-plugin` }, status })), result]);
   assert.match(text, /Checked 7 plugin bundle\(s\)/);
   assert.ok(text.indexOf('Update available (1):') < text.indexOf('Check failed (1):'));
@@ -48,7 +49,7 @@ test('offered older versions are not displayed as a proposed downgrade', () => {
 test('Git displays compact commit comparisons even when the manifest version is unchanged', () => {
   const revision = 'a'.repeat(40);
   const old = 'b'.repeat(40);
-  const git = { kind: 'github-source', repository: 'owner/repo', ref: 'main', baseSpec: 'github:owner/repo', currentRevision: old, pinned: false };
+  const git = { kind: 'github-source', repository: 'owner/repo', ref: 'main', baseSpec: 'github:owner/repo', currentRevision: old, pinned: false } satisfies GithubSource;
   const offered = { spec: `github:owner/repo#${revision}`, revision };
   const text = formatChecks([{ ...result, source: git, candidate: offered }]);
   assert.match(text, /commit bbbbbbbbbbbb -> aaaaaaaaaaaa/);

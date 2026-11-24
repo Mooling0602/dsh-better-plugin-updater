@@ -7,7 +7,20 @@ assert.ok(mode === 'prepare' || mode === 'verify', 'Expected prepare or verify m
 assert.ok(entry, 'Expected the installed DSH profile boot module path.');
 assert.ok(process.env.DSH_HOME, 'Expected an isolated DSH_HOME.');
 
-const { initializeProfileFromDefault, runProfile } = await import(pathToFileURL(entry));
+interface ProfileBoot {
+  initializeProfileFromDefault(profile: string, platform: string): void;
+  runProfile(options: {
+    environment: NodeJS.ProcessEnv;
+    profile: string;
+    patchFiles: string[];
+    args: string[];
+  }): Promise<{
+    ctx: { get<T = unknown>(key: string): T };
+    shutdown: { shutdown(exitCode: number): Promise<void> };
+  }>;
+}
+
+const { initializeProfileFromDefault, runProfile } = await import(pathToFileURL(entry).href) as ProfileBoot;
 const profile = 'ci-smoke';
 
 if (mode === 'prepare') {
@@ -22,11 +35,11 @@ if (mode === 'prepare') {
 
   let exitCode = 1;
   try {
-    const profileContext = ctx.get('profileContext');
+    const profileContext = ctx.get<{ dir: string }>('profileContext');
     const linkedPackage = `${profileContext.dir}/node_modules/dsh-better-plugin-updater`;
     assert.equal(realpathSync(linkedPackage), realpathSync(workspace), 'The profile must load the repository through its local link.');
 
-    const updater = ctx.get('betterPluginUpdater');
+    const updater = ctx.get<{ list(): Promise<Array<{ name: string }>> }>('betterPluginUpdater');
     assert.ok(updater, 'The plugin must provide its Host updater service during DSH activation.');
     const bundles = await updater.list();
     assert.ok(bundles.some(bundle => bundle.name === 'dsh-better-plugin-updater'), 'The activated updater service must inventory its own installed bundle.');

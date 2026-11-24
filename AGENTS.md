@@ -54,9 +54,9 @@ The message is still reviewed by the user before the commit exists, as rule 1 re
 Every module, public class and public function carries a docstring in the standard documentation format of the language it is written in.
 
 - **TypeScript** (`src/**/*.ts`): JSDoc. Put a `/** ... */` block on every exported symbol. The type signature carries the types; use `@param`, `@returns` and `@throws` only for the part of the contract the signature cannot express, such as units, ordering and failure conditions. Existing docstrings in this repository are mostly a single summary line, and that is the right shape while the signature says the rest.
-- **Test files** (`test/*.test.mjs`) are plain JavaScript with no build step. A comment is needed only where a fixture reproduces a host behaviour that is not obvious from the assertions.
+- **Test files** (`test/*.test.ts`) and development scripts are TypeScript and must pass the strict tooling type check. A comment is needed only where a fixture reproduces a host behaviour that is not obvious from the assertions.
 
-The source is `src/**/*.ts`. Everything under `dist/` is build output: `tsc` emits the declarations, the maps and the Node ESM modules, `scripts/generate-typert.mjs` writes the Remote descriptors, and `scripts/build-client.mjs` turns `src/client/index.ts` into the self contained browser factory at `dist/client.js`. **Change the `.ts` file, run `pnpm build`, and never edit or document a generated file.** `dist/` is ignored by Git: it is built on install, before packing and in CI, so a generated file never enters a commit. The npm tarball still ships `dist/`, so a published installation runs no build step. See section 6.
+The source is `src/**/*.ts`. Everything under `dist/` is build output: `tsc` emits the declarations, the maps and the Node ESM modules, `scripts/generate-typert.ts` writes the Remote descriptors, and `scripts/build-client.ts` turns `src/client/index.ts` into the self contained browser factory at `dist/client.js`. **Change the `.ts` file, run `pnpm build`, and never edit or document a generated file.** `dist/` is ignored by Git: it is built on install, before packing and in CI, so a generated file never enters a commit. The npm tarball still ships `dist/`, so a published installation runs no build step. See section 6.
 
 A docstring states a contract. It does not restate the signature. Say what the code does, what it owns, what it may throw and which invariant the caller must uphold. Units, ordering guarantees and lifetime rules belong here.
 
@@ -141,7 +141,7 @@ pnpm test
 pnpm pack
 ```
 
-- `pnpm check` writes the generated Remote descriptors and then type checks with no output. `pnpm test` builds first, then runs `node --test test/*.test.mjs` against the compiled `dist/` modules, so a stale build hides a broken test.
+- `pnpm check` builds the package and strictly type checks the tests and development scripts. `pnpm test` builds first, then runs `node --test test/*.test.ts` against the compiled `dist/` modules, so a stale build hides a broken test.
 - Tests activate the plugin in the real Cordis lifecycle with fake DSH services, and they mock provider requests and package writes. **Do not add a test that needs the network, a real credential, a live registry or GitHub, a real plugin upgrade or a restarted DSH.** Such a test is a manual smoke check and belongs in `CONTEXT.md` as a described procedure, not in `test/`.
 - Before a handoff, run `pnpm check` and `pnpm test`, and confirm that the build succeeds with no `dist/` present, since nothing generated is committed. A result reported to the user as passing must come from the commands above, not from a narrower ad hoc check.
 - Build or pack only. **Do not install this bundle into a live DSH profile, restart that profile, or perform a real plugin upgrade as an incidental development check.**

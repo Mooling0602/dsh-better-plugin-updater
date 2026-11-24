@@ -4,49 +4,54 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { Context } from '@deepseek-ai/cordis';
 
-async function fixture() {
+type Action = { type: unknown; props: { children: string; variant: string; size: string; onClick: () => void } };
+type Registration = { options: { name: string; id: string; inject: () => { bundleName: string } }; component: (props: { subject: Subject; bundleName: string }) => Action | null };
+type Subject = { kind: string; id?: string; pkg?: { name: string }; row?: { rowId: string } };
+type Client = { apply: (ctx: object) => void; mountRepositoryLink: (ctx: Context) => void };
+
+async function fixture(): Promise<{ client: Client; button: object; opens: unknown[][]; declare: () => () => void; getRegistration: () => Registration | undefined; removed: () => number }> {
   const source = await readFile(new URL('../dist/client.js', import.meta.url), 'utf8');
-  const opens = [];
+  const opens: unknown[][] = [];
   const button = function Button() {};
-  const jsx = (type, props) => ({ type, props });
-  const requireHost = specifier => {
+  const jsx = (type: unknown, props: Action['props']) => ({ type, props });
+  const requireHost = (specifier: string): unknown => {
     if (specifier === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return { Button: button };
     throw new Error(`Unexpected dependency: ${specifier}`);
   };
-  let client;
+  let client: Client | undefined;
   vm.runInNewContext(source, {
     window: {
-      open: (...args) => opens.push(args),
-      __ModuleLoader__: { load({ id, factory }) { assert.equal(id, 'dsh-better-plugin-updater'); client = factory(requireHost); } },
+      open: (...args: unknown[]) => opens.push(args),
+      __ModuleLoader__: { load({ id, factory }: { id: string; factory: (resolve: (specifier: string) => unknown) => Client }) { assert.equal(id, 'dsh-better-plugin-updater'); client = factory(requireHost); } },
     },
   });
   assert.ok(client);
 
-  let pending;
-  let registration;
+  let pending: (() => () => void) | undefined;
+  let registration: Registration | undefined;
   let removed = 0;
   const slots = {
-    inject(name, callback) {
+    inject(name: string, callback: () => () => void) {
       assert.equal(name, 'plugins.detail.actions');
       pending = callback;
     },
-    register(options, component) {
+    register(options: Registration['options'], component: Registration['component']) {
       registration = { options, component };
       return () => { removed++; registration = undefined; };
     },
   };
   const ctx = {
-    get() { return undefined; },
-    inject(services, callback) {
+    get(_name: string) { return undefined; },
+    inject(services: string[], callback: (services: { slots: typeof slots }) => void) {
       if (services.length === 1 && services[0] === 'slots') callback({ slots });
     },
   };
   client.apply(ctx);
-  return { client, button, opens, declare: () => pending(), getRegistration: () => registration, removed: () => removed };
+  return { client, button, opens, declare: () => { assert.ok(pending); return pending(); }, getRegistration: () => registration, removed: () => removed };
 }
 
-function subject(kind, name) {
+function subject(kind: string, name: string): Subject {
   if (kind === 'item') return { kind, id: name };
   return { kind, pkg: { name }, ...(kind === 'row' ? { row: { rowId: 'entry' } } : {}) };
 }
@@ -55,7 +60,9 @@ test('Repository link waits for the detail slot without requiring settings servi
   const f = await fixture();
   assert.equal(f.getRegistration(), undefined);
   const dispose = f.declare();
-  const { options } = f.getRegistration();
+  const registration = f.getRegistration();
+  assert.ok(registration);
+  const { options } = registration;
   assert.equal(options.name, 'plugins.detail.actions');
   assert.equal(options.id, 'dsh-better-plugin-updater.github');
   assert.equal(options.inject().bundleName, 'dsh-better-plugin-updater');
@@ -74,12 +81,12 @@ test('Cordis lifecycle disposes the GitHub slot contribution', async () => {
   let active = false;
   let removed = 0;
   ctx.provide('slots', {
-    inject(name, callback) {
+    inject(name: string, callback: () => () => void) {
       assert.equal(name, 'plugins.detail.actions');
       const dispose = callback();
       return () => { dispose(); };
     },
-    register(options) {
+    register(options: { name: string }) {
       assert.equal(options.name, 'plugins.detail.actions');
       active = true;
       return () => { active = false; removed++; };
@@ -96,12 +103,15 @@ test('Cordis lifecycle disposes the GitHub slot contribution', async () => {
 test('Repository link appears only for this bundle and opens its fixed repository safely', async () => {
   const f = await fixture();
   f.declare();
-  const { component, options } = f.getRegistration();
+  const registration = f.getRegistration();
+  assert.ok(registration);
+  const { component, options } = registration;
   const injected = options.inject();
   for (const s of [subject('bundle', 'other'), subject('row', 'dsh-better-plugin-updater'), subject('item', 'dsh-better-plugin-updater')]) {
     assert.equal(component({ subject: s, ...injected }), null);
   }
   const action = component({ subject: subject('bundle', 'dsh-better-plugin-updater'), ...injected });
+  assert.ok(action);
   assert.equal(action.type, f.button);
   assert.equal(action.props.children, 'GitHub');
   assert.equal(action.props.variant, 'outline');
@@ -109,7 +119,7 @@ test('Repository link appears only for this bundle and opens its fixed repositor
   assert.equal(f.opens.length, 0);
   action.props.onClick();
   assert.equal(f.opens.length, 1);
-  assert.equal(f.opens[0][0], 'https://github.com/Mooling0602/dsh-better-plugin-updater');
-  assert.equal(f.opens[0][1], '_blank');
-  assert.equal(f.opens[0][2], 'noopener,noreferrer');
+  assert.equal(f.opens[0]![0], 'https://github.com/Mooling0602/dsh-better-plugin-updater');
+  assert.equal(f.opens[0]![1], '_blank');
+  assert.equal(f.opens[0]![2], 'noopener,noreferrer');
 });

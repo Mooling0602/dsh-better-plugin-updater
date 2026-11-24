@@ -70,12 +70,12 @@
     "url": "git+https://github.com/Mooling0602/dsh-better-plugin-updater.git"
   },
   "scripts": {
-    "build": "node scripts/generate-typert.mjs && tsc -p tsconfig.json && node scripts/build-client.mjs",
-    "check": "node scripts/generate-typert.mjs && tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/*.test.mjs",
+    "build": "node scripts/generate-typert.ts && tsc -p tsconfig.json && node scripts/build-client.ts",
+    "check": "npm run build && tsc -p tsconfig.tooling.json",
+    "test": "npm run build && node --test test/*.test.ts",
     "prepare": "npm run build",
     "prepublishOnly": "npm run check && npm run test",
-    "release:notes": "node .github/scripts/release-notes.mjs"
+    "release:notes": "node .github/scripts/release-notes.ts"
   },
   "dependencies": {
     "@deepseek-ai/cosmokit": "~1.10.0-alpha.1",
@@ -101,6 +101,7 @@
     "@deepseek-ai/dsh-typert-generator": "0.2.3-alpha.2",
     "@types/node": "^24.0.0",
     "@types/react": "^19.3.0",
+    "@types/react-test-renderer": "^19.1.0",
     "@types/semver": "^7.7.1",
     "esbuild": "^0.28.2",
     "react": "^19.3.1",

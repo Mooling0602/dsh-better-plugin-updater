@@ -2,54 +2,55 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createJsonClient } from '../dist/core.js';
 import { UpdaterError } from '../dist/errors.js';
+import type { MessageKey, MessageParams } from '../dist/i18n.js';
 
 const github = 'https://api.github.com/repos/owner/repo';
 const future = '2099-01-01T00:00:00.000Z';
 const reset = String(Date.parse(future) / 1000);
 const futureDate = new Date(future).toUTCString();
-function diagnostic(key, params) {
-  return error => {
+function diagnostic(key: MessageKey, params?: MessageParams): (error: unknown) => boolean {
+  return (error: unknown) => {
     assert.ok(error instanceof UpdaterError);
     assert.deepEqual(error.detail, { key, ...(params === undefined ? {} : { params }) });
     return true;
   };
 }
-function rejecting(status, headers = {}, body = 'fixture-secret') {
+function rejecting(status: number, headers: HeadersInit = {}, body = 'fixture-secret') {
   return createJsonClient({ fetch: async () => new Response(body, { status, headers }) });
 }
 
 test('JSON transport never leaks the GitHub token to a registry', async () => {
-  const requests = [];
+  const requests: { url: string; init: RequestInit | undefined }[] = [];
   const client = createJsonClient({ githubToken: 'fixture-secret', fetch: async (url, init) => {
     requests.push({ url: String(url), init }); return Response.json({ ok: true });
   } });
   assert.deepEqual(await client.get(github), { ok: true });
   await client.get('https://registry.test/plugin');
-  assert.equal(requests[0].init.headers.Authorization, 'Bearer fixture-secret');
-  assert.equal(requests[1].init.headers.Authorization, undefined);
-  assert.equal(requests[0].init.redirect, 'error');
+  assert.equal(new Headers(requests[0]!.init?.headers).get('authorization'), 'Bearer fixture-secret');
+  assert.equal(new Headers(requests[1]!.init?.headers).get('authorization') ?? undefined, undefined);
+  assert.equal(requests[0]!.init?.redirect, 'error');
 });
 
 test('dynamic credentials are resolved per GitHub request and never read or sent to other origins', async () => {
   let resolutions = 0;
-  let token = 'fixture-first-token';
-  const sent = [];
+  let token: string | undefined = 'fixture-first-token';
+  const sent: { url: string; authorization: string | undefined }[] = [];
   const client = createJsonClient({
     githubToken: 'fixture-static-must-not-win',
     resolveGithubToken: async () => { resolutions++; return token; },
-    fetch: async (url, init) => { sent.push({ url: String(url), authorization: init.headers.Authorization }); return Response.json({}); },
+    fetch: async (url, init) => { sent.push({ url: String(url), authorization: new Headers(init?.headers).get('authorization') ?? undefined }); return Response.json({}); },
   });
   for (const url of ['https://registry.test/plugin', 'https://api.github.com.example.test/plugin', 'https://api.github.com:444/plugin']) await client.get(url);
   assert.equal(resolutions, 0);
   assert.ok(sent.every(request => request.authorization === undefined));
   await client.get(github);
-  assert.equal(sent.at(-1).authorization, 'Bearer fixture-first-token');
+  assert.equal(sent.at(-1)!.authorization, 'Bearer fixture-first-token');
   token = 'fixture-rotated-token';
   await client.get(github);
-  assert.equal(sent.at(-1).authorization, 'Bearer fixture-rotated-token');
+  assert.equal(sent.at(-1)!.authorization, 'Bearer fixture-rotated-token');
   token = undefined;
   await client.get(github);
-  assert.equal(sent.at(-1).authorization, undefined);
+  assert.equal(sent.at(-1)!.authorization, undefined);
   assert.equal(resolutions, 3);
 });
 
@@ -58,8 +59,8 @@ test('credential failures and malformed tokens send no request and reveal no sec
   const transport = async () => { requests++; return Response.json({}); };
   const failing = createJsonClient({ resolveGithubToken: async () => { throw new Error('fixture-secret'); }, fetch: transport });
   await assert.rejects(failing.get(github), diagnostic('error.githubCredentials'));
-  for (const token of ['fixture-secret\r\nInjected: value', 'fixture secret', '含有机密', 123]) {
-    await assert.rejects(createJsonClient({ resolveGithubToken: async () => token, fetch: transport }).get(github), diagnostic('error.githubCredentials'));
+  for (const token of ['fixture-secret\r\nInjected: value', 'fixture secret', '含有机密', 123] as const) {
+    await assert.rejects(createJsonClient({ resolveGithubToken: async () => token as string, fetch: transport }).get(github), diagnostic('error.githubCredentials'));
   }
   assert.equal(requests, 0);
   // A broken GitHub credential provider must not break or get invoked by npm checks.
@@ -69,16 +70,16 @@ test('credential failures and malformed tokens send no request and reveal no sec
 
 test('credential resolution obeys timeout and caller cancellation without late requests', async () => {
   let requests = 0;
-  let lateReject;
-  const never = new Promise((_, reject) => { lateReject = reject; });
+  let lateReject!: (reason?: unknown) => void;
+  const never = new Promise<never>((_, reject) => { lateReject = reject; });
   const transport = async () => { requests++; return Response.json({}); };
   await assert.rejects(createJsonClient({ timeoutMs: 20, resolveGithubToken: () => never, fetch: transport }).get(github), diagnostic('error.timeout'));
   lateReject(new Error('fixture-secret late rejection'));
 
   const controller = new AbortController();
-  let finish;
-  let entered;
-  const started = new Promise(resolve => { entered = resolve; });
+  let finish!: (value: string | undefined) => void;
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
   const client = createJsonClient({ resolveGithubToken: () => { entered(); return new Promise(resolve => { finish = resolve; }); }, fetch: transport });
   const pending = client.get(github, controller.signal);
   const rejected = assert.rejects(pending, diagnostic('error.requestCancelled'));
@@ -110,6 +111,7 @@ test('ordinary HTTP failures retain their numeric status without exposing respon
   for (const status of [401, 403, 404, 500, 503]) {
     await assert.rejects(rejecting(status).get(github), error => {
       diagnostic('error.httpStatus', { status })(error);
+      assert.ok(error instanceof Error);
       assert.match(error.message, new RegExp(`HTTP ${status}`));
       assert.doesNotMatch(error.message, /fixture-secret|owner\/repo/);
       return true;
@@ -120,6 +122,7 @@ test('ordinary HTTP failures retain their numeric status without exposing respon
 test('GitHub exhausted primary quota reports the status, validated reset time and token hint', async () => {
   await assert.rejects(rejecting(403, { 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': reset }).get(github), error => {
     diagnostic('error.githubRateLimitedUntil', { status: 403, retryAt: future })(error);
+    assert.ok(error instanceof Error);
     assert.match(error.message, /GitHub API rate limit.*HTTP 403/);
     assert.match(error.message, /DSH credentials/);
     assert.ok(error.message.includes(future));
@@ -151,11 +154,12 @@ test('Retry-After delay seconds are normalized to UTC and do not trigger automat
   const client = createJsonClient({ fetch: async () => { requests++; return new Response(null, { status: 429, headers: { 'Retry-After': '120' } }); } });
   const before = Date.now();
   await assert.rejects(client.get(github), error => {
+    assert.ok(error instanceof UpdaterError);
     assert.equal(error.detail.key, 'error.githubRateLimitedUntil');
-    assert.equal(error.detail.params.status, 429);
-    const retry = Date.parse(error.detail.params.retryAt);
+    assert.equal(error.detail.params!.status, 429);
+    const retry = Date.parse(String(error.detail.params!.retryAt));
     assert.ok(retry >= before + 120000 && retry <= Date.now() + 120000);
-    assert.match(error.detail.params.retryAt, /Z$/);
+    assert.match(String(error.detail.params!.retryAt), /Z$/);
     return true;
   });
   assert.equal(requests, 1);

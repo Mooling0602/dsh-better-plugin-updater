@@ -2,18 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createUpdaterCommand } from '../dist/commands.js';
 import { createUpdaterTool } from '../dist/tools.js';
+import type { ApplyResult, CheckResult, InstalledBundle, UpdatePlan } from '../dist/types.js';
 
 function fixture() {
-  const calls = [];
-  let bundles = ['plugin-a', 'plugin-b', '@scope/plugin-c'].map(name => ({ name, version: '1.0.0', source: `${name}@^1`, installed: true, enabled: true, removable: true, availability: 'profile' }));
+  const calls: (readonly [string, ...unknown[]])[] = [];
+  let bundles: InstalledBundle[] = ['plugin-a', 'plugin-b', '@scope/plugin-c'].map(name => ({ name, version: '1.0.0', source: `${name}@^1`, installed: true, enabled: true, removable: true, availability: 'profile' }));
   let version = '2.0.0';
   const updater = {
     async list() { calls.push(['list']); return structuredClone(bundles); },
-    async check(name, signal) { calls.push(['check', name, signal]); return bundles.filter(b => !name || b.name === name).map(bundle => ({ bundle, source: { kind: 'npm', packageName: bundle.name, registry: 'https://registry.test/', channel: 'latest', pinned: false }, status: 'update-available', message: 'Update available.', candidate: { spec: `${bundle.name}@${version}`, version } })); },
-    prepare(result) { return { id: result.bundle.name, bundle: result.bundle, source: result.source, candidate: result.candidate, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60000).toISOString(), command: `/plugin-updater update ${result.bundle.name}`, warnings: ['Recovery is manual.'] }; },
-    async apply(id, accepted) { calls.push(['apply', id, accepted]); return { status: 'updated', message: 'Fixture success.' }; },
+    async check(name?: string, signal?: AbortSignal): Promise<CheckResult[]> { calls.push(['check', name, signal]); return bundles.filter(b => !name || b.name === name).map(bundle => ({ bundle, source: { kind: 'npm', packageName: bundle.name, registry: 'https://registry.test/', channel: 'latest', pinned: false }, status: 'update-available', message: 'Update available.', candidate: { spec: `${bundle.name}@${version}`, version } })); },
+    prepare(result: CheckResult): UpdatePlan { return { id: result.bundle.name, bundle: result.bundle, source: result.source, candidate: result.candidate ?? (() => { throw new Error('Fixture candidate is missing.'); })(), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60000).toISOString(), command: `/plugin-updater update ${result.bundle.name}`, warnings: ['Recovery is manual.'] }; },
+    async apply(id: string, accepted: boolean): Promise<ApplyResult> { calls.push(['apply', id, accepted]); return { status: 'updated', message: 'Fixture success.' }; },
   };
-  return { updater, calls, command: createUpdaterCommand(updater), tool: createUpdaterTool(updater), setVersion(v) { version = v; }, setBundles(v) { bundles = v; }, get bundles() { return bundles; } };
+  return { updater, calls, command: createUpdaterCommand(updater), tool: createUpdaterTool(updater), setVersion(v: string) { version = v; }, setBundles(v: InstalledBundle[]) { bundles = v; }, get bundles() { return bundles; } };
 }
 
 test('list, help, check and read-only tool remain available', async () => {
@@ -94,7 +95,8 @@ test('removed plan action is rejected by commands and the tool without writes', 
     assert.equal(result.kind, 'error');
     assert.doesNotMatch(result.text, /\/plugin-updater plan/);
   }
-  assert.deepEqual(f.tool.parameters.properties.action.enum, ['list', 'check']);
+  const parameters = f.tool.parameters as { properties: { action: { enum: string[] } } };
+  assert.deepEqual(parameters.properties.action.enum, ['list', 'check']);
   await assert.rejects(f.tool.execute({ action: 'plan', target: 'plugin-a' }, { signal }));
   assert.equal(f.calls.filter(c => c[0] === 'apply').length, 0);
 });
@@ -114,9 +116,10 @@ test('malformed Git branch flags never reach an update', async () => {
 
 test('a second confirmation cannot race an in-flight update', async () => {
   const f = fixture(), agent = {};
-  let release, entered;
-  const gate = new Promise(resolve => { release = resolve; });
-  const started = new Promise(resolve => { entered = resolve; });
+  let release: () => void = () => {};
+  let entered: () => void = () => {};
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
   f.updater.apply = async () => { entered(); await gate; return { status: 'updated', message: 'done' }; };
   await f.command.handler({ rawInput: 'update plugin-a', agent });
   const running = f.command.handler({ rawInput: 'ok', agent });

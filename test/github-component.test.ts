@@ -6,46 +6,70 @@ import React from 'react';
 import * as jsxRuntime from 'react/jsx-runtime';
 import TestRenderer, { act } from 'react-test-renderer';
 
+declare global { var IS_REACT_ACT_ENVIRONMENT: boolean; }
+
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+type RegistrationOptions = { name: string; inject: () => Record<string, unknown> };
+type View = React.ComponentType<Record<string, unknown>>;
+type Registration = { options: RegistrationOptions; view: View };
+type HostInner = {
+  slots: { inject<T>(name: string, callback: () => T): T; register(options: RegistrationOptions, view: View): () => void };
+  locale: { getSnapshot(): { active: string }; subscribe(): () => void };
+  get(name: string): unknown;
+  effect(callback: () => () => void): void;
+};
+type ClientBridge = { mountGitHubUpdate(context: { inject(dependencies: readonly string[], callback: (inner: HostInner) => void): void }): void };
+type RemoteResult = { ok: true; value: string };
+type GitHubRemote = {
+  describe(name: string): Promise<RemoteResult | void>;
+  check(name: string): Promise<RemoteResult | void>;
+  apply(id: string, accepted: boolean, language: string): Promise<RemoteResult | void>;
+};
 
 async function component() {
   const source = await readFile(new URL('../dist/client.js', import.meta.url), 'utf8');
-  let client;
-  const Button = ({ children, icon, ...props }) => React.createElement('button', props, icon, children);
-  const Modal = ({ children, footer, title, className, onClose }) => React.createElement('div', { role: 'dialog', 'data-class': className, onClose }, title, children, footer);
-  const primitive = new Proxy({ Button, Modal }, { get(target, key) {
+  let client: ClientBridge | undefined;
+  const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { icon?: React.ReactNode }> = ({ children, icon, ...props }) => React.createElement('button', props, icon, children);
+  const Modal: React.FC<{ children?: React.ReactNode; footer?: React.ReactNode; title?: React.ReactNode; className?: string; onClose?: () => void }> = ({ children, footer, title, className, onClose }) => React.createElement('div', { role: 'dialog', 'data-class': className, onClose: () => onClose?.() }, title, children, footer);
+  const primitives: Record<PropertyKey, unknown> = { Button, Modal };
+  const primitive = new Proxy(primitives, { get(target, key: string | symbol) {
     return target[key] ?? (() => React.createElement('i', { 'data-icon': String(key) }));
   } });
-  vm.runInNewContext(source, { window: { __ModuleLoader__: { load({ factory }) {
-    client = factory(name => {
+  vm.runInNewContext(source, { window: { __ModuleLoader__: { load({ factory }: { factory: (resolve: (specifier: string) => unknown) => ClientBridge }) {
+    client = factory((name: string) => {
       if (name === 'react') return React;
       if (name === 'react/jsx-runtime') return jsxRuntime;
       if (name === '@deepseek-ai/dsh-client-ui-primitives') return primitive;
       throw new Error(`Unexpected dependency: ${name}`);
     });
   } } } });
-  const registrations = new Map();
-  let notify = () => {};
+  const registrations = new Map<string, Registration>();
+  let notify: () => void = () => {};
   const locale = { getSnapshot: () => ({ active: 'zh' }), subscribe: () => () => {} };
-  const slots = {
-    inject(_name, callback) { return callback(); },
-    register(options, view) { registrations.set(options.name, { options, view }); return () => { registrations.delete(options.name); }; },
+  const slots: HostInner['slots'] = {
+    inject<T>(_name: string, callback: () => T): T { return callback(); },
+    register(options: RegistrationOptions, view: View) { registrations.set(options.name, { options, view }); return () => { registrations.delete(options.name); }; },
   };
   const gateway = {
     async $mount() { return async () => {}; },
-    $on(_event, callback) { notify = callback; return () => {}; },
+    $on(_event: string, callback: () => void) { notify = callback; return () => {}; },
   };
-  let remote;
-  const inner = { slots, locale, get(name) { return name === 'remote' ? gateway : remote; }, effect(callback) { return callback(); } };
+  let remote: GitHubRemote | undefined;
+  const inner: HostInner = { slots, locale, get(name: string) { return name === 'remote' ? gateway : remote; }, effect(callback) { callback(); } };
+  if (!client) throw new Error('The client factory did not run.');
   client.mountGitHubUpdate({ inject(_deps, callback) { callback(inner); } });
   await new Promise(resolve => setImmediate(resolve));
   const detail = registrations.get('plugins.detail.section');
   const overlay = registrations.get('shell.overlay');
-  return { view: detail.view, overlay: overlay.view, setRemote(value) { remote = value; }, getProps() { return detail.options.inject(); }, getOverlayProps() { return overlay.options.inject(); }, notify() { notify(); } };
+  if (!detail || !overlay) throw new Error('GitHub slots were not registered.');
+  return { view: detail.view, overlay: overlay.view, setRemote(value: GitHubRemote) { remote = value; }, getProps() { return detail.options.inject(); }, getOverlayProps() { return overlay.options.inject(); }, notify() { notify(); } };
 }
 
-function button(root, text) {
-  return root.findAllByType('button').find(item => item.children.some(child => child === text));
+function button(root: TestRenderer.ReactTestInstance, text: string): TestRenderer.ReactTestInstance {
+  const match = root.findAllByType('button').find(item => item.children.some(child => child === text));
+  assert.ok(match);
+  return match;
 }
 
 const candidate = 'b'.repeat(40);
@@ -54,13 +78,13 @@ const check = { result: { status: 'pinned', bundle: { version: '1.0.0' }, source
 
 test('GitHub detail checks automatically and needs explicit risk acknowledgement', async () => {
   const f = await component();
-  const calls = [];
+  const calls: unknown[][] = [];
   f.setRemote({
     async describe(name) { calls.push(['describe', name]); return { ok: true, value: JSON.stringify({ name, repository: 'owner/repo', kind: 'github-source', installed, fixedPin: true }) }; },
     async check(name) { calls.push(['check', name]); return { ok: true, value: JSON.stringify(check) }; },
     async apply(id, accepted, language) { calls.push(['apply', id, accepted, language]); return { ok: true, value: JSON.stringify({ status: 'failed', text: 'Manual recovery required.' }) }; },
   });
-  let root;
+  let root!: TestRenderer.ReactTestRenderer;
   await act(async () => { root = TestRenderer.create(React.createElement(React.Fragment, null,
     React.createElement(f.view, { ...f.getProps(), subject: { kind: 'bundle', pkg: { name: 'git-plugin' } } }),
     React.createElement(f.overlay, f.getOverlayProps()))); });
@@ -70,6 +94,7 @@ test('GitHub detail checks automatically and needs explicit risk acknowledgement
   await act(async () => { button(root.root, '更新').props.onClick(); });
   assert.equal(root.root.findByProps({ role: 'dialog' }).props['data-class'], 'dsh-updater-github-dialog');
   const update = root.root.findAllByType('button').filter(item => item.children.some(child => child === '更新')).at(-1);
+  assert.ok(update);
   assert.equal(update.props.disabled, true);
   assert.equal(calls.length, 2);
   await act(async () => { root.root.findByType('input').props.onChange({ currentTarget: { checked: true } }); });
@@ -80,10 +105,11 @@ test('GitHub detail checks automatically and needs explicit risk acknowledgement
   await act(async () => { root.unmount(); });
 });
 
-for (const [kind, status] of [['github-source', 'updated'], ['github-release', 'failed'], ['github-release', 'restart-required'], ['github-source', 'disconnect']]) {
+for (const [kind, status] of [['github-source', 'updated'], ['github-release', 'failed'], ['github-release', 'restart-required'], ['github-source', 'disconnect']] as const) {
   test(`${kind} keeps the update dialog and ${status} result when the detail unmounts`, async () => {
     const f = await component();
-    let resolveApply, rejectApply;
+    let resolveApply!: (result: RemoteResult) => void;
+    let rejectApply!: (error: Error) => void;
     let applyCalls = 0;
     f.setRemote({
       async describe(name) { return { ok: true, value: JSON.stringify({ name, repository: 'owner/repo', kind, installed, fixedPin: kind === 'github-source' }) }; },
@@ -91,16 +117,17 @@ for (const [kind, status] of [['github-source', 'updated'], ['github-release', '
       async apply() { applyCalls++; return new Promise((resolve, reject) => { resolveApply = resolve; rejectApply = reject; }); },
     });
     const subject = { kind: 'bundle', pkg: { name: 'git-plugin' } };
-    const render = showDetail => React.createElement(React.Fragment, null,
+    const render = (showDetail: boolean) => React.createElement(React.Fragment, null,
       showDetail ? React.createElement(f.view, { ...f.getProps(), subject }) : null,
       React.createElement(f.overlay, f.getOverlayProps()));
-    let root;
+    let root!: TestRenderer.ReactTestRenderer;
     await act(async () => { root = TestRenderer.create(render(true)); });
     await act(async () => { root.root.findByProps({ 'aria-expanded': false }).props.onClick(); });
     await act(async () => { button(root.root, '更新').props.onClick(); });
     await act(async () => { root.root.findByType('input').props.onChange({ currentTarget: { checked: true } }); });
     const dialog = root.root.findByProps({ role: 'dialog' });
     const update = root.root.findAllByType('button').filter(item => item.children.some(child => child === '更新')).at(-1);
+    assert.ok(update);
     await act(async () => { update.props.onClick(); update.props.onClick(); dialog.props.onClose(); f.notify(); root.update(render(false)); });
     assert.equal(applyCalls, 1);
     assert.equal(root.root.findByProps({ 'data-github-update': 'running' }).props['data-github-update'], 'running');
@@ -127,7 +154,7 @@ test('an inventory change removes a stale section when the source becomes npm', 
     async check() { checks++; return { ok: true, value: JSON.stringify(check) }; },
     async apply() { throw new Error('Unexpected update'); },
   });
-  let root;
+  let root!: TestRenderer.ReactTestRenderer;
   await act(async () => { root = TestRenderer.create(React.createElement(f.view, { ...f.getProps(), subject: { kind: 'bundle', pkg: { name: 'plugin' } } })); });
   assert.equal(checks, 1);
   assert.notEqual(root.toJSON(), null);
@@ -142,7 +169,7 @@ test('npm details do not mount a GitHub section or start a source check', async 
   const f = await component();
   let checks = 0;
   f.setRemote({ async describe() { return { ok: true, value: 'null' }; }, async check() { checks++; }, async apply() { throw new Error('Unexpected update'); } });
-  let root;
+  let root!: TestRenderer.ReactTestRenderer;
   await act(async () => { root = TestRenderer.create(React.createElement(f.view, { ...f.getProps(), subject: { kind: 'bundle', pkg: { name: 'npm-plugin' } } })); });
   assert.equal(root.toJSON(), null);
   assert.equal(checks, 0);

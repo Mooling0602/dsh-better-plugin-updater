@@ -8,19 +8,23 @@ import { createUpdaterCommand } from '../dist/commands.js';
 import { createUpdaterTool } from '../dist/tools.js';
 import { formatApply, formatChecks, formatCommandError, formatInventory, formatUsage } from '../dist/format.js';
 import { createJsonClient, createProviders, Updater } from '../dist/core.js';
+import type { CheckResult, InstalledBundle, JsonClient, PluginManager, UpdatePlan, UpdateSource } from '../dist/core.js';
+import type { Language, Message } from '../dist/i18n.js';
+import type { Updater as UpdaterType } from '../dist/updater.js';
 
-const bundle = { name: 'plugin', version: '1.0.0', source: 'plugin@^1', installed: true, enabled: false, removable: true, availability: 'profile' };
-const providerSource = { kind: 'npm', packageName: 'plugin', registry: 'https://registry.test/', channel: 'latest', pinned: false };
-const candidate = { spec: 'plugin@2.0.0', version: '2.0.0', registry: providerSource.registry };
-const placeholders = text => [...new Set([...text.matchAll(/\{([A-Za-z][A-Za-z0-9]*)\}/g)].map(match => match[1]))].sort();
+const bundle: InstalledBundle = { name: 'plugin', version: '1.0.0', source: 'plugin@^1', installed: true, enabled: false, removable: true, availability: 'profile' };
+const providerSource: UpdateSource = { kind: 'npm', packageName: 'plugin', registry: 'https://registry.test/', channel: 'latest', pinned: false };
+const candidate = { spec: 'plugin@2.0.0', version: '2.0.0', registry: 'https://registry.test/' };
+type DictionaryKey = keyof typeof dictionaries.en;
+const placeholders = (text: string): string[] => [...new Set([...text.matchAll(/\{([A-Za-z][A-Za-z0-9]*)\}/g)].map(match => match[1] ?? ''))].sort();
 
 test('English and Chinese dictionaries have identical keys and placeholder sets', () => {
   assert.deepEqual(Object.keys(dictionaries.zh).sort(), Object.keys(dictionaries.en).sort());
-  for (const key of Object.keys(dictionaries.en)) {
+  for (const key of Object.keys(dictionaries.en) as DictionaryKey[]) {
     assert.ok(dictionaries.en[key].length && dictionaries.zh[key].length, key);
     assert.deepEqual(placeholders(dictionaries.zh[key]), placeholders(dictionaries.en[key]), key);
     const values = Object.fromEntries(placeholders(dictionaries.en[key]).map(name => [name, `literal-${name}`]));
-    for (const language of ['en', 'zh']) assert.doesNotMatch(t(language, key, values), /\{[A-Za-z][A-Za-z0-9]*\}/, key);
+    for (const language of ['en', 'zh'] as const) assert.doesNotMatch(t(language, key, values), /\{[A-Za-z][A-Za-z0-9]*\}/, key);
   }
 });
 
@@ -28,16 +32,16 @@ test('translation interpolates literal values once and never interprets arbitrar
   const literal = 'plugin-{ref}-$&';
   assert.ok(t('zh', 'warning.gitPin', { name: literal, ref: 'main' }).includes(literal));
   assert.equal(translate(undefined, 'External diagnostic.', 'zh'), 'External diagnostic.');
-  assert.equal(translate({ key: 'unknown.external' }, 'Keep this diagnostic.', 'zh'), 'Keep this diagnostic.');
+  assert.equal(translate({ key: 'unknown.external' } as unknown as Message, 'Keep this diagnostic.', 'zh'), 'Keep this diagnostic.');
   assert.match(formatCommandError(new UpdaterError('error.expired'), 'zh'), /确认不存在或已过期/);
   assert.ok(formatCommandError(new Error(dictionaries.en['error.expired']), 'zh').includes(dictionaries.en['error.expired']));
   assert.match(formatCommandError(new DOMException('Aborted', 'AbortError'), 'zh'), /操作已取消/);
 });
 
 test('auto reads only a saved locale preference, with redaction and safe English fallback', () => {
-  let preference = 'zh-CN';
+  let preference: string = 'zh-CN';
   let calls = 0;
-  const settings = { describe(options) { calls++; assert.deepEqual(options, { redactSecrets: true }); return [{ ns: 'unrelated', value: { preference: 'en' } }, { ns: 'locale', value: { preference } }]; } };
+  const settings = { describe(options: { redactSecrets: boolean }) { calls++; assert.deepEqual(options, { redactSecrets: true }); return [{ ns: 'unrelated', value: { preference: 'en' } }, { ns: 'locale', value: { preference } }]; } };
   assert.equal(resolveLanguage('auto', settings), 'zh');
   preference = 'en-US'; assert.equal(resolveLanguage('auto', settings), 'en');
   preference = 'ZH-Hant'; assert.equal(resolveLanguage('auto', settings), 'zh');
@@ -52,7 +56,7 @@ test('auto reads only a saved locale preference, with redaction and safe English
 });
 
 test('Chinese formatters translate headers, statuses, owned reasons, risks and outcomes', () => {
-  const checked = { bundle, source: providerSource, candidate, status: 'update-available', ...message('msg.versionUpdate') };
+  const checked: CheckResult = { bundle, source: providerSource, candidate, status: 'update-available', ...message('msg.versionUpdate') };
   const inventory = formatInventory([bundle], 'zh');
   assert.match(inventory, /当前配置已安装 1 个/);
   assert.match(inventory, /已禁用/);
@@ -80,12 +84,13 @@ test('Chinese formatters translate headers, statuses, owned reasons, risks and o
   assert.match(formatUsage('en'), /Plugin updater/);
 });
 
-function target() {
-  const calls = [];
+function target(): { updater: Pick<UpdaterType, 'list' | 'check' | 'prepare' | 'apply'>; calls: (string | [string, string, boolean])[] } {
+  const calls: (string | [string, string, boolean])[] = [];
   const updater = {
     async list() { calls.push('list'); return []; },
-    async check() { calls.push('check'); return [{ bundle, source: providerSource, status: 'current', ...message('msg.versionCurrent') }]; },
-    async apply(id, accepted) { calls.push(['apply', id, accepted]); return { status: 'failed', ...message('msg.removalFailed') }; },
+    async check(): Promise<CheckResult[]> { calls.push('check'); return [{ bundle, source: providerSource, status: 'current', ...message('msg.versionCurrent') }]; },
+    prepare(): UpdatePlan { return { id: 'unused', createdAt: '', expiresAt: '', command: '', bundle, source: providerSource, candidate, warnings: [] }; },
+    async apply(id: string, accepted: boolean) { calls.push(['apply', id, accepted]); return { status: 'failed' as const, ...message('msg.removalFailed') }; },
   };
   return { updater, calls };
 }
@@ -109,9 +114,9 @@ test('language overrides work before or after actions and never weaken risk ackn
 
 test('language follows the next invocation but is captured for the whole current operation', async () => {
   const { updater } = target();
-  let language = 'zh';
-  let release;
-  const gate = new Promise(resolve => { release = resolve; });
+  let language: Language = 'zh';
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
   updater.list = async () => { await gate; return []; };
   const command = createUpdaterCommand(updater, { language: () => language });
   const pending = command.handler({ rawInput: 'list' });
@@ -133,11 +138,11 @@ test('localized commands never localize tool JSON keys, statuses or English mess
 });
 
 test('provider and coordinator reasons and caught errors carry owned translation identities', async () => {
-  const manager = { async listBundles() { return [bundle]; }, async registries() { return { registry: providerSource.registry }; } };
-  const client = { async get() { return { name: 'plugin', 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name: 'plugin', version: '2.0.0', dsh: { bundle: {} } } } }; } };
+  const manager = { async listBundles() { return [bundle]; }, async registries() { return { registry: providerSource.registry }; }, async removeBundle() { throw new Error('No writes'); }, async installBundle() { throw new Error('No writes'); } };
+  const client: JsonClient = { async get() { return { name: 'plugin', 'dist-tags': { latest: '2.0.0' }, versions: { '2.0.0': { name: 'plugin', version: '2.0.0', dsh: { bundle: {} } } } }; } };
   const updater = new Updater({ manager, client, providers: createProviders() });
   const plan = updater.prepare((await updater.check('plugin'))[0]);
-  assert.match(translate(plan.warningDetails.at(-1), '', 'zh'), /固定到明确版本/);
+  assert.match(translate(plan.warningDetails?.at(-1), '', 'zh'), /固定到明确版本/);
   manager.listBundles = async () => [{ ...bundle, source: 'link:/tmp/local' }];
   assert.match(formatChecks(await updater.check(), 'zh'), /安装来源为本地目录或无法识别/);
   manager.listBundles = async () => [bundle];
@@ -156,7 +161,7 @@ test('GitHub rate-limit details survive real transport, providers, tools, plans 
   ];
   let requests = 0;
   let writes = 0;
-  const manager = {
+  const manager: PluginManager = {
     async listBundles() { return bundles; },
     async registries() { return { registry: providerSource.registry }; },
     async removeBundle() { writes++; throw new Error('No writes'); },
@@ -176,15 +181,20 @@ test('GitHub rate-limit details survive real transport, providers, tools, plans 
       assert.match(result.message, /GitHub API rate limit reached \(HTTP 403\)/);
       assert.doesNotMatch(result.message, /fixture-secret/);
     }
-    const result = JSON.parse(await createUpdaterTool(updater).execute({ action: 'check', target: bundle.name }, { signal: new AbortController().signal }));
-    assert.deepEqual(result[0].detail, detail);
-    assert.equal(result[0].message, checks[0].message);
+    const result: { status: string; detail: Message; message: string }[] = JSON.parse(await createUpdaterTool(updater).execute({ action: 'check', target: bundle.name }, { signal: new AbortController().signal }));
+    const toolResult = result[0];
+    assert.ok(toolResult);
+    assert.deepEqual(toolResult.detail, detail);
+    const firstCheck = checks[0];
+    assert.ok(firstCheck);
+    assert.equal(toolResult.message, firstCheck.message);
     const command = createUpdaterCommand(updater, { language: 'zh' });
     const human = await command.handler({ rawInput: 'check release-plugin' });
     assert.match(human.text, /GitHub API 请求已达限额（HTTP 403）/);
     assert.ok(human.text.includes(retryAt));
     assert.doesNotMatch(human.text, /fixture-secret|Metadata request failed/);
     assert.throws(() => updater.prepare(checks[0]), error => {
+      assert.ok(error instanceof UpdaterError);
       assert.deepEqual(error.detail, detail);
       return true;
     });
@@ -203,8 +213,8 @@ test('Host auto language reads live settings, explicit configuration wins, and n
   let preference = 'zh';
   ctx.provide('pluginManager', { async listBundles() { return []; }, async registries() { return { registry: providerSource.registry }; }, async removeBundle() { throw new Error('No writes'); }, async installBundle() { throw new Error('No writes'); } });
   ctx.provide('profileContext', { dir: '/nonexistent-i18n-fixture' });
-  ctx.provide('commands', { register(value) { commands.set(value.name, value); return () => commands.delete(value.name); } });
-  ctx.provide('settings', { describe(options) { assert.deepEqual(options, { redactSecrets: true }); return [{ ns: 'locale', value: { preference } }]; } });
+  ctx.provide('commands', { register(value: { name: string; description: string; handler: (input: { rawInput: string }) => Promise<{ text: string }> }) { commands.set(value.name, value); return () => commands.delete(value.name); } });
+  ctx.provide('settings', { describe(options: { redactSecrets: boolean }) { assert.deepEqual(options, { redactSecrets: true }); return [{ ns: 'locale', value: { preference } }]; } });
   let fiber = ctx.plugin(plugin, {}); await fiber.await();
   assert.match(commands.get('plugin-updater').description, /检查插件包/);
   assert.equal((await commands.get('plugin-updater').handler({ rawInput: '' })).text, '当前配置中没有插件包。');
@@ -216,5 +226,5 @@ test('Host auto language reads live settings, explicit configuration wins, and n
   assert.equal(preference, 'en');
   await fiber.dispose();
   assert.equal(plugin.Config({}).language.get(), 'auto');
-  assert.throws(() => plugin.Config({ language: 'ja' }));
+  assert.throws(() => plugin.Config({ language: 'ja' as never }));
 });

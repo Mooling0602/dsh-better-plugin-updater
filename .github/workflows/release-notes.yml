@@ -42,8 +42,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref || 'main' }}
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 0
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          path: notes-source
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -81,7 +85,7 @@ jobs:
         run: |
           set -euo pipefail
           notes="${RUNNER_TEMP}/release-notes.md"
-          node .github/scripts/release-notes.mjs "${TAG}" --tag "${TAG}" --repo "${GITHUB_REPOSITORY}" --output "${notes}"
+          node .github/scripts/release-notes.ts "${TAG}" --tag "${TAG}" --repo "${GITHUB_REPOSITORY}" --changelog "${GITHUB_WORKSPACE}/notes-source/CHANGELOG.md" --output "${notes}"
           echo "notes_file=${notes}" >> "$GITHUB_OUTPUT"
           echo "--- release notes: CHANGELOG.md Header, ${TAG} section, Endfix ---"
           cat "${notes}"

@@ -1,16 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import type { TestContext } from 'node:test';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const script = fileURLToPath(new URL('../.github/scripts/release-tag.mjs', import.meta.url));
+const script = fileURLToPath(new URL('../.github/scripts/release-tag.ts', import.meta.url));
 const version = '1.2.3';
 const ref = `refs/tags/${version}`;
 
-async function fixture(t) {
+async function fixture(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'release-tag-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const remote = join(root, 'remote.git');
@@ -28,7 +29,7 @@ async function fixture(t) {
     GIT_COMMITTER_NAME: 'Release Test',
     GIT_COMMITTER_EMAIL: 'release@example.com',
   };
-  function git(cwd, ...args) {
+  function git(cwd: string, ...args: string[]): string {
     const result = spawnSync('git', args, { cwd, env, encoding: 'utf8' });
     assert.equal(result.status, 0, `git ${args.join(' ')} failed: ${result.stderr}`);
     return result.stdout.trim();
@@ -40,7 +41,7 @@ async function fixture(t) {
   const previous = git(work, 'rev-parse', 'HEAD');
   git(work, 'commit', '--allow-empty', '-m', `release: v${version}`);
   const head = git(work, 'rev-parse', 'HEAD');
-  function run(sha = head) {
+  function run(sha: string = head): SpawnSyncReturns<string> {
     return spawnSync(process.execPath, [script], {
       cwd: work,
       env: { ...env, VERSION: version, GITHUB_SHA: sha },
@@ -50,10 +51,10 @@ async function fixture(t) {
   function remoteRef() {
     return git(root, '--git-dir', remote, 'for-each-ref', '--format=%(objectname)', ref);
   }
-  function remoteObject(...args) {
+  function remoteObject(...args: string[]): string {
     return git(root, '--git-dir', remote, ...args);
   }
-  function publishTag(target, annotated) {
+  function publishTag(target: string, annotated: boolean): void {
     if (annotated) git(work, 'tag', '-a', version, target, '-m', 'Existing release tag');
     else git(work, 'tag', version, target);
     git(work, 'push', 'origin', ref);
@@ -62,11 +63,11 @@ async function fixture(t) {
   return { work, head, previous, git, run, remoteRef, remoteObject, publishTag };
 }
 
-function assertSuccess(result) {
+function assertSuccess(result: SpawnSyncReturns<string>): void {
   assert.equal(result.status, 0, `script failed: ${result.error ?? ''}\n${result.stdout}\n${result.stderr}`);
 }
 
-function assertFailure(result) {
+function assertFailure(result: SpawnSyncReturns<string>): void {
   assert.notEqual(result.status, null, `script did not exit: ${result.error ?? result.signal}`);
   assert.notEqual(result.status, 0, `script unexpectedly succeeded: ${result.stdout}\n${result.stderr}`);
 }

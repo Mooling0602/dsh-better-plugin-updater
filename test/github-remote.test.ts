@@ -3,24 +3,27 @@ import assert from 'node:assert/strict';
 import remote from '../dist/typert.remote-client.js';
 import { GitHubRemote } from '../dist/github-remote.js';
 
-function service(principal) {
-  const calls = [];
-  const instance = Object.create(GitHubRemote.prototype);
-  instance.ctx = { invocation: principal === undefined ? undefined : { peer: { principal }, signal: new AbortController().signal } };
-  instance.ui = {
-    async describe(name) { calls.push(['describe', name]); return undefined; },
-    async check(name) { calls.push(['check', name]); return undefined; },
-    async apply(id, accepted) { calls.push(['apply', id, accepted]); return { status: 'failed', message: 'Failed.' }; },
-  };
+type UiCall = readonly ['describe' | 'check', string] | readonly ['apply', string, boolean];
+
+function service(principal: unknown): { instance: GitHubRemote; calls: UiCall[] } {
+  const calls: UiCall[] = [];
+  const instance = Object.assign(Object.create(GitHubRemote.prototype), {
+    ctx: { invocation: principal === undefined ? undefined : { peer: { principal }, signal: new AbortController().signal } },
+    ui: {
+      async describe(name: string) { calls.push(['describe', name]); return undefined; },
+      async check(name: string) { calls.push(['check', name]); return undefined; },
+      async apply(id: string, accepted: boolean) { calls.push(['apply', id, accepted]); return { status: 'failed', message: 'Failed.' }; },
+    },
+  }) as GitHubRemote;
   return { instance, calls };
 }
 
 test('generated UI Remote requires typed exact argument envelopes', () => {
   const method = remote.methods['betterPluginUpdaterUi/apply'];
   const schema = method.input({ strict: true }).create();
-  assert.equal(schema.safeParse({ id: 'id', acceptRemovalRisk: true, language: 'en' }).success, true);
-  assert.equal(schema.safeParse({ id: 'id', acceptRemovalRisk: true, language: 'en', extra: true }).success, false);
-  assert.equal(schema.safeParse({ id: 'id', acceptRemovalRisk: 'true', language: 'en' }).success, false);
+  assert.doesNotThrow(() => schema.parse({ id: 'id', acceptRemovalRisk: true, language: 'en' }));
+  assert.throws(() => schema.parse({ id: 'id', acceptRemovalRisk: true, language: 'en', extra: true }));
+  assert.throws(() => schema.parse({ id: 'id', acceptRemovalRisk: 'true', language: 'en' }));
 });
 
 test('Remote access rejects non-owner and missing invocation before backend calls', async () => {

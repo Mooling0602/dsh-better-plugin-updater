@@ -42,7 +42,7 @@ jobs:
         env:
           DSH_HOME: ${{ runner.temp }}/dsh-home
           DSH_PROFILE_BOOT: ${{ runner.temp }}/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot.js
-        run: node .github/scripts/dsh-link-smoke.mjs prepare "$DSH_PROFILE_BOOT"
+        run: node .github/scripts/dsh-link-smoke.ts prepare "$DSH_PROFILE_BOOT"
       - name: Install the local linked plugin
         env:
           DSH_HOME: ${{ runner.temp }}/dsh-home
@@ -52,6 +52,6 @@ jobs:
         env:
           DSH_HOME: ${{ runner.temp }}/dsh-home
           DSH_PROFILE_BOOT: ${{ runner.temp }}/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot.js
-        run: node .github/scripts/dsh-link-smoke.mjs verify "$DSH_PROFILE_BOOT" "$GITHUB_WORKSPACE"
+        run: node .github/scripts/dsh-link-smoke.ts verify "$DSH_PROFILE_BOOT" "$GITHUB_WORKSPACE"
       - name: Pack
         run: pnpm pack
