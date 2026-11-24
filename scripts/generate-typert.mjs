@@ -15,7 +15,7 @@ try {
     './typert': { types: './lib/typert.host.d.ts', default: './lib/typert.host.js' },
     './remote': { types: './lib/typert.remote-client.d.ts', default: './lib/typert.remote-client.js' },
   };
-  manifest.files = ['lib/typert.host.js', 'lib/typert.host.d.ts', 'lib/typert.remote-client.js', 'lib/typert.remote-client.d.ts'];
+  manifest.files = ['lib/typert.host.js', 'lib/typert.host.d.ts', 'lib/typert.remote-client.js', 'lib/typert.remote-client.d.ts', 'lib/typert.remote-client.d.ts.map'];
   await writeFile(join(packageRoot, 'package.json'), JSON.stringify(manifest));
   await writeFile(join(root, 'typert-protocol.d.ts'), `declare module '@deepseek-ai/dsh-typert-protocol' {\n  import type { Context } from '@deepseek-ai/cordis';\n  export abstract class TypertRemoteService { protected constructor(ctx: Context, serviceKey: string); readonly ctx: Context; }\n  export const Remote: any;\n}\n`);
   await writeFile(join(root, 'tsconfig.base.json'), JSON.stringify({ compilerOptions: {

@@ -8,8 +8,8 @@ It uses DSH's plugin manager to change packages. Open a GitHub-sourced plugin's 
 
 ## Requirements
 
-- Node.js 22 or later.
-- A managed DSH profile, in the Web app, the desktop app or the terminal.
+- Node.js 24.22.3 or later in the 24.x series, or 26.13.1 or later.
+- DSH 0.2.3-alpha.2 or later, before 0.3.0, with a managed profile in the Web app, the desktop app or the terminal.
 
 ## Install
 

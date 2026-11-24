@@ -23,7 +23,7 @@ jobs:
           version: 12.9.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24.22.3
           cache: pnpm
       - name: Install
         run: pnpm install --ignore-scripts --frozen-lockfile
@@ -31,5 +31,27 @@ jobs:
         run: pnpm check
       - name: Test
         run: pnpm test
+      - name: Install DSH runtime
+        env:
+          DSH_RUNTIME: ${{ runner.temp }}/dsh-runtime
+        run: |
+          mkdir -p "$DSH_RUNTIME"
+          printf '{"private":true}\n' > "$DSH_RUNTIME/package.json"
+          pnpm --dir "$DSH_RUNTIME" add @deepseek-ai/dsh@0.2.3-alpha.2
+      - name: Initialize isolated smoke profile
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-home
+          DSH_PROFILE_BOOT: ${{ runner.temp }}/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot.js
+        run: node .github/scripts/dsh-link-smoke.mjs prepare "$DSH_PROFILE_BOOT"
+      - name: Install the local linked plugin
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-home
+          DSH_RUNTIME: ${{ runner.temp }}/dsh-runtime
+        run: pnpm --dir "$DSH_RUNTIME" exec dsh plugin --profile ci-smoke add "link:${GITHUB_WORKSPACE}"
+      - name: Boot DSH and verify plugin activation
+        env:
+          DSH_HOME: ${{ runner.temp }}/dsh-home
+          DSH_PROFILE_BOOT: ${{ runner.temp }}/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/profile-boot.js
+        run: node .github/scripts/dsh-link-smoke.mjs verify "$DSH_PROFILE_BOOT" "$GITHUB_WORKSPACE"
       - name: Pack
         run: pnpm pack
