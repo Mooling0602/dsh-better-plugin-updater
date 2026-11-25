@@ -24,6 +24,12 @@ Release notes for this DSH plugin bundle. Version sections are ordered newest fi
 - Rewrite test modules in TypeScript, in commit ef377a4.
 - Test plugin install and load stage with dsh in GitHub Actions runner, in commit 9e2f2d4 and commit df1d128.
 
+### BREAKING CHANGES
+
+From this version, dsh version less than 0.2.3-alpha.2 is no longer supported. Use plugin version [0.1.2](https://github.com/Mooling0602/dsh-better-plugin-updater/releases/tag/0.1.2) for these dsh versions instead.
+
+从该版本开始，0.2.3-alpha.2 以下的 dsh 版本不再支持。请使用 [0.1.2](https://github.com/Mooling0602/dsh-better-plugin-updater/releases/tag/0.1.2) 插件版本。
+
 ## 0.1.2
 
 ### Fixes
